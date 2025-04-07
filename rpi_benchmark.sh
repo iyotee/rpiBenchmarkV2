@@ -669,24 +669,80 @@ generate_charts() {
     <title>RPi Benchmark Results</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .chart-container { width: 80%; margin: 20px auto; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin: 20px 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .charts-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+        }
+        .chart-container {
+            width: 45%;
+            margin: 10px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            padding: 15px;
+        }
+        .chart-title {
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+            color: #3498db;
+        }
+        @media (max-width: 768px) {
+            .chart-container {
+                width: 90%;
+            }
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #7f8c8d;
+        }
     </style>
 </head>
 <body>
     <h1>RPi Benchmark Results</h1>
-    <div class="chart-container">
-        <canvas id="cpuChart"></canvas>
+    
+    <div class="charts-container">
+        <div class="chart-container">
+            <div class="chart-title">Performance CPU</div>
+            <canvas id="cpuChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <div class="chart-title">Performance Mémoire</div>
+            <canvas id="memoryChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <div class="chart-title">Performance Disque</div>
+            <canvas id="diskChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <div class="chart-title">Performance Réseau</div>
+            <canvas id="networkChart"></canvas>
+        </div>
     </div>
-    <div class="chart-container">
-        <canvas id="memoryChart"></canvas>
+    
+    <div class="footer">
+        Généré le $(date '+%d/%m/%Y à %H:%M') par RPi Benchmark v2.0
     </div>
-    <div class="chart-container">
-        <canvas id="diskChart"></canvas>
-    </div>
-    <div class="chart-container">
-        <canvas id="networkChart"></canvas>
-    </div>
+    
     <script>
         // Données du benchmark
         const data = {
@@ -715,6 +771,34 @@ generate_charts() {
             }
         };
 
+        // Configuration commune
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 10,
+                        font: {
+                            size: 10
+                        }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                    titleFont: {
+                        size: 12
+                    },
+                    bodyFont: {
+                        size: 11
+                    },
+                    padding: 8
+                }
+            }
+        };
+
         // Graphique CPU
         new Chart(document.getElementById('cpuChart'), {
             type: 'bar',
@@ -723,35 +807,27 @@ generate_charts() {
                 datasets: [{
                     label: 'Opérations par seconde',
                     data: [data.cpu.singleThread.opsPerSec, data.cpu.multiThread.opsPerSec],
-                    backgroundColor: ['rgba(54, 162, 235, 0.5)', 'rgba(255, 99, 132, 0.5)']
+                    backgroundColor: ['rgba(54, 162, 235, 0.7)', 'rgba(255, 99, 132, 0.7)'],
+                    borderColor: ['rgba(54, 162, 235, 1)', 'rgba(255, 99, 132, 1)'],
+                    borderWidth: 1
                 }]
             },
-            options: {
-                responsive: true,
-                title: {
-                    display: true,
-                    text: 'Performance CPU'
-                }
-            }
+            options: commonOptions
         });
 
         // Graphique Mémoire
         new Chart(document.getElementById('memoryChart'), {
-            type: 'doughnut',
+            type: 'pie',
             data: {
-                labels: ['Vitesse de transfert'],
+                labels: ['Vitesse de transfert (MB/s)'],
                 datasets: [{
                     data: [data.memory.transferSpeed],
-                    backgroundColor: ['rgba(75, 192, 192, 0.5)']
+                    backgroundColor: ['rgba(75, 192, 192, 0.7)'],
+                    borderColor: ['rgba(75, 192, 192, 1)'],
+                    borderWidth: 1
                 }]
             },
-            options: {
-                responsive: true,
-                title: {
-                    display: true,
-                    text: 'Performance Mémoire'
-                }
-            }
+            options: commonOptions
         });
 
         // Graphique Disque
@@ -762,36 +838,28 @@ generate_charts() {
                 datasets: [{
                     label: 'Vitesse (MB/s)',
                     data: [data.disk.writeSpeed, data.disk.readSpeed],
-                    backgroundColor: ['rgba(255, 206, 86, 0.5)', 'rgba(75, 192, 192, 0.5)']
+                    backgroundColor: ['rgba(255, 206, 86, 0.7)', 'rgba(153, 102, 255, 0.7)'],
+                    borderColor: ['rgba(255, 206, 86, 1)', 'rgba(153, 102, 255, 1)'],
+                    borderWidth: 1
                 }]
             },
-            options: {
-                responsive: true,
-                title: {
-                    display: true,
-                    text: 'Performance Disque'
-                }
-            }
+            options: commonOptions
         });
 
         // Graphique Réseau
         new Chart(document.getElementById('networkChart'), {
-            type: 'line',
+            type: 'bar',
             data: {
-                labels: ['Latence', 'Débit'],
+                labels: ['Ping (ms)', 'Download (Mbps)'],
                 datasets: [{
                     label: 'Performance',
                     data: [data.network.ping, data.network.downloadSpeed],
-                    backgroundColor: ['rgba(153, 102, 255, 0.5)']
+                    backgroundColor: ['rgba(255, 159, 64, 0.7)', 'rgba(75, 192, 192, 0.7)'],
+                    borderColor: ['rgba(255, 159, 64, 1)', 'rgba(75, 192, 192, 1)'],
+                    borderWidth: 1
                 }]
             },
-            options: {
-                responsive: true,
-                title: {
-                    display: true,
-                    text: 'Performance Réseau'
-                }
-            }
+            options: commonOptions
         });
     </script>
 </body>
