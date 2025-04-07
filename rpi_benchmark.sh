@@ -265,7 +265,7 @@ benchmark_cpu() {
     
     # Test single-thread
     log_result "${YELLOW}Test single-thread:${NC}"
-    local results=$(sysbench --test=cpu --cpu-max-prime=20000 --num-threads=1 run)
+    local results=$(sysbench cpu --cpu-max-prime=20000 --threads=1 run 2>/dev/null)
     local events=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
     local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}')
     local ops=$(echo "$results" | grep 'events per second:' | awk '{print $NF}')
@@ -275,13 +275,13 @@ benchmark_cpu() {
     printf "+---------------------+----------------------+\n"
     printf "| Événements          | ${GREEN}%-20s${NC} |\n" "${events:-0}"
     printf "| Temps total         | ${GREEN}%-20s${NC} |\n" "${time:-0} sec"
-    printf "| Opérations/sec      | ${GREEN}%-20s${NC} |\n" "${ops:-0}"
+    printf "| Opérations/sec      | ${GREEN}%-20.2f${NC} |\n" "${ops:-0}"
     printf "+---------------------+----------------------+\n"
     
     # Test multi-thread
     log_result "${YELLOW}Test multi-thread:${NC}"
     local cpu_cores=$(get_cpu_cores)
-    local results=$(sysbench --test=cpu --cpu-max-prime=20000 --num-threads=$cpu_cores run)
+    local results=$(sysbench cpu --cpu-max-prime=20000 --threads=$cpu_cores run 2>/dev/null)
     local events=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
     local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}')
     local ops=$(echo "$results" | grep 'events per second:' | awk '{print $NF}')
@@ -291,7 +291,7 @@ benchmark_cpu() {
     printf "+---------------------+----------------------+\n"
     printf "| Événements          | ${GREEN}%-20s${NC} |\n" "${events:-0}"
     printf "| Temps total         | ${GREEN}%-20s${NC} |\n" "${time:-0} sec"
-    printf "| Opérations/sec      | ${GREEN}%-20s${NC} |\n" "${ops:-0}"
+    printf "| Opérations/sec      | ${GREEN}%-20.2f${NC} |\n" "${ops:-0}"
     printf "+---------------------+----------------------+\n"
 }
 
@@ -300,35 +300,35 @@ benchmark_threads() {
     log_result "\n${BLUE}=== BENCHMARK THREADS ===${NC}"
     
     local cpu_cores=$(get_cpu_cores)
-    local results=$(sysbench threads --threads=$cpu_cores run)
-    local min=$(echo "$results" | grep 'min:' | awk '{print $2}')
-    local avg=$(echo "$results" | grep 'avg:' | awk '{print $2}')
-    local max=$(echo "$results" | grep 'max:' | awk '{print $2}')
+    local results=$(sysbench threads --threads=$cpu_cores --thread-yields=1000 --thread-locks=8 run 2>/dev/null)
+    local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}')
+    local ops=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
+    local latency=$(echo "$results" | grep 'avg:' | awk '{print $NF}')
     
-    printf "+---------------------+----------------------+\n"
-    printf "| ${CYAN}Métrique${NC}            | ${CYAN}Score${NC}                |\n"
-    printf "+---------------------+----------------------+\n"
-    printf "| Temps minimum       | ${GREEN}%-20s${NC} |\n" "${min:-0} secondes"
-    printf "| Temps moyen         | ${GREEN}%-20s${NC} |\n" "${avg:-0} secondes"
-    printf "| Temps maximum       | ${GREEN}%-20s${NC} |\n" "${max:-0} secondes"
-    printf "+---------------------+----------------------+\n"
+    printf "+----------------------+----------------------+\n"
+    printf "| ${CYAN}Métrique${NC}             | ${CYAN}Score${NC}                |\n"
+    printf "+----------------------+----------------------+\n"
+    printf "| Temps d'exécution    | ${GREEN}%-20.2f${NC} |\n" "${time:-0} sec"
+    printf "| Opérations totales   | ${GREEN}%-20s${NC} |\n" "${ops:-0}"
+    printf "| Latence moyenne      | ${GREEN}%-20.2f${NC} |\n" "${latency:-0} ms"
+    printf "+----------------------+----------------------+\n"
 }
 
 # Fonction pour le benchmark mémoire
 benchmark_memory() {
     log_result "\n${BLUE}=== BENCHMARK MÉMOIRE ===${NC}"
     
-    local results=$(sysbench --test=memory --memory-block-size=1K --memory-total-size=10G --memory-access-mode=seq run)
-    local ops=$(echo "$results" | grep 'transferred' | awk '{print $(NF-1)}')
-    local speed=$(echo "$results" | grep 'transferred' | awk '{print $NF}' | sed 's/[^0-9.]//g')
-    local unit=$(echo "$results" | grep 'transferred' | awk '{print $NF}' | sed 's/[0-9.]//g')
+    local results=$(sysbench memory --memory-block-size=1K --memory-total-size=10G --memory-access-mode=seq run 2>/dev/null)
+    local total_ops=$(echo "$results" | grep 'Total operations:' | awk '{print $NF}')
+    local speed=$(echo "$results" | grep 'transferred (' | awk -F'(' '{print $2}' | awk '{print $1}')
+    local bw=$(echo "$results" | grep 'transferred (' | awk -F'(' '{print $2}' | awk '{print $3}' | sed 's/)//')
     
-    printf "+---------------------+----------------------+\n"
-    printf "| ${CYAN}Métrique${NC}            | ${CYAN}Score${NC}                |\n"
-    printf "+---------------------+----------------------+\n"
-    printf "| Opérations          | ${GREEN}%-20s${NC} |\n" "${ops:-0}"
-    printf "| Vitesse             | ${GREEN}%-20s${NC} |\n" "${speed:-0} ${unit:-MB/sec}"
-    printf "+---------------------+----------------------+\n"
+    printf "+----------------------+----------------------+\n"
+    printf "| ${CYAN}Métrique${NC}             | ${CYAN}Score${NC}                |\n"
+    printf "+----------------------+----------------------+\n"
+    printf "| Opérations totales   | ${GREEN}%-20s${NC} |\n" "${total_ops:-0}"
+    printf "| Vitesse de transfert | ${GREEN}%-20s${NC} |\n" "${speed:-0} ${bw:-MiB/sec}"
+    printf "+----------------------+----------------------+\n"
 }
 
 # Fonction pour le benchmark disque
@@ -342,24 +342,28 @@ benchmark_disk() {
     
     # Test d'écriture séquentielle
     log_result "${YELLOW}Test d'écriture séquentielle:${NC}"
-    local results=$(sysbench --test=fileio --file-total-size=2G --file-test-mode=seqwr prepare 2>/dev/null)
-    results=$(sysbench --test=fileio --file-total-size=2G --file-test-mode=seqwr run)
+    sysbench fileio --file-total-size=2G prepare >/dev/null 2>&1
+    local results=$(sysbench fileio --file-total-size=2G --file-test-mode=seqwr run 2>/dev/null)
     local write_speed=$(echo "$results" | grep 'written, MiB/s:' | awk '{print $NF}')
+    local write_iops=$(echo "$results" | grep 'writes/s:' | awk '{print $NF}')
     
     # Test de lecture séquentielle
     log_result "${YELLOW}Test de lecture séquentielle:${NC}"
-    results=$(sysbench --test=fileio --file-total-size=2G --file-test-mode=seqrd run)
+    local results=$(sysbench fileio --file-total-size=2G --file-test-mode=seqrd run 2>/dev/null)
     local read_speed=$(echo "$results" | grep 'read, MiB/s:' | awk '{print $NF}')
+    local read_iops=$(echo "$results" | grep 'reads/s:' | awk '{print $NF}')
     
     printf "+---------------------------+--------------------------------+\n"
     printf "| ${CYAN}Métrique${NC}                    | ${CYAN}Score${NC}                          |\n"
     printf "+---------------------------+--------------------------------+\n"
-    printf "| Vitesse d'écriture        | ${GREEN}%-26s${NC} |\n" "${write_speed:-0} MB/s"
-    printf "| Vitesse de lecture        | ${GREEN}%-26s${NC} |\n" "${read_speed:-0} MB/s"
+    printf "| Vitesse d'écriture        | ${GREEN}%-26.2f${NC} |\n" "${write_speed:-0} MB/s"
+    printf "| IOPS en écriture          | ${GREEN}%-26.2f${NC} |\n" "${write_iops:-0}"
+    printf "| Vitesse de lecture        | ${GREEN}%-26.2f${NC} |\n" "${read_speed:-0} MB/s"
+    printf "| IOPS en lecture           | ${GREEN}%-26.2f${NC} |\n" "${read_iops:-0}"
     printf "+---------------------------+--------------------------------+\n"
     
     # Nettoyage
-    sysbench --test=fileio --file-total-size=2G cleanup >/dev/null 2>&1
+    sysbench fileio cleanup >/dev/null 2>&1
     cd - >/dev/null
     rm -rf "$test_dir"
 }
