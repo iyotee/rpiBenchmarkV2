@@ -1173,9 +1173,8 @@ show_menu() {
         echo -e "7. Benchmark Réseau"
         echo -e "8. Stress Test"
         echo -e "9. Exporter les résultats (CSV et JSON)"
-        echo -e "10. Interface web"
-        echo -e "11. Planifier les benchmarks"
-        echo -e "12. Quitter"
+        echo -e "10. Planifier les benchmarks"
+        echo -e "11. Quitter"
         echo -e "\nVotre choix: "
         
         read -r choice
@@ -1194,10 +1193,11 @@ show_menu() {
             9)
                 export_csv
                 export_json
+                echo -e "${GREEN}Résultats exportés en CSV et JSON dans le dossier ${RESULTS_DIR}${NC}"
+                read -p "Appuyez sur Entrée pour continuer..."
                 ;;
-            10) start_web_interface ;;
-            11) schedule_benchmark ;;
-            12) exit 0 ;;
+            10) schedule_benchmark ;;
+            11) exit 0 ;;
             *) echo -e "${RED}Choix invalide${NC}" ;;
         esac
         
@@ -1209,51 +1209,40 @@ show_menu() {
 # Fonction pour afficher le menu avec dialog
 show_dialog_menu() {
     while true; do
-        choice=$(dialog --clear \
-            --backtitle "RPi Benchmark v2.0" \
-            --title "Menu Principal" \
-            --menu "Choisissez une option:" \
-            15 50 8 \
-            1 "Informations système" \
-            2 "Exécuter tous les benchmarks" \
-            3 "Benchmark CPU" \
-            4 "Benchmark Threads" \
-            5 "Benchmark Mémoire" \
-            6 "Benchmark Disque" \
-            7 "Benchmark Réseau" \
-            8 "Stress Test" \
-            9 "Exporter les résultats" \
-            10 "Interface web" \
-            11 "Planifier les benchmarks" \
-            12 "Quitter" \
-            2>&1 >/dev/tty)
-            
+        echo -e "${YELLOW}Menu Principal:${NC}"
+        echo "1. Afficher les informations système"
+        echo "2. Exécuter tous les benchmarks"
+        echo "3. Benchmark CPU"
+        echo "4. Benchmark Threads"
+        echo "5. Benchmark Mémoire"
+        echo "6. Benchmark Disque"
+        echo "7. Benchmark Réseau"
+        echo "8. Stress Test"
+        echo "9. Exporter les résultats (CSV et JSON)"
+        echo "10. Planifier les benchmarks"
+        echo "11. Quitter"
+        echo ""
+        read -p "Votre choix: " choice
+
         case $choice in
-            1)
-                clear
-                get_hardware_info
-                get_network_info
-                ;;
-            2) clear; run_all_benchmarks ;;
-            3) clear; benchmark_cpu ;;
-            4) clear; benchmark_threads ;;
-            5) clear; benchmark_memory ;;
-            6) clear; benchmark_disk ;;
-            7) clear; benchmark_network ;;
-            8) clear; stress_test ;;
-            9)
-                clear
+            1) show_system_info ;;
+            2) run_all_benchmarks ;;
+            3) benchmark_cpu ;;
+            4) benchmark_threads ;;
+            5) benchmark_memory ;;
+            6) benchmark_disk ;;
+            7) benchmark_network ;;
+            8) stress_test ;;
+            9) 
                 export_csv
                 export_json
+                echo -e "${GREEN}Résultats exportés en CSV et JSON dans le dossier ${RESULTS_DIR}${NC}"
+                read -p "Appuyez sur Entrée pour continuer..."
                 ;;
-            10) clear; start_web_interface ;;
-            11) clear; schedule_benchmark ;;
-            12) clear; exit 0 ;;
-            *) continue ;; # En cas d'annulation, retour au menu
+            10) schedule_benchmark ;;
+            11) exit 0 ;;
+            *) echo -e "${RED}Choix invalide. Veuillez réessayer.${NC}" ;;
         esac
-        
-        echo -e "\nAppuyez sur Entrée pour continuer..."
-        read -r
     done
 }
 
@@ -1336,260 +1325,6 @@ rotate_logs() {
             rm "${logs[$i]}"
         done
     fi
-}
-
-# Fonction pour lancer le serveur web
-start_web_interface() {
-    echo -e "${YELLOW}Configuration de l'environnement web...${NC}"
-    
-    # Créer un environnement virtuel Python
-    if [ "$PLATFORM" = "macos" ]; then
-        # Obtenir le chemin vers Python3
-        SYSTEM_PYTHON=$(which python3)
-        if [ -z "$SYSTEM_PYTHON" ]; then
-            echo -e "${RED}Python3 non trouvé sur le système. Veuillez l'installer.${NC}"
-            return 1
-        fi
-        
-        echo -e "${YELLOW}Python3 trouvé à: $SYSTEM_PYTHON${NC}"
-        PYTHON_VERSION=$($SYSTEM_PYTHON --version | cut -d' ' -f2 | cut -d'.' -f1-2)
-        echo -e "${YELLOW}Version Python: $PYTHON_VERSION${NC}"
-        
-        # Supprimer l'environnement virtuel existant
-        echo -e "${YELLOW}Suppression de l'environnement virtuel existant...${NC}"
-        rm -rf "$RESULTS_DIR/venv"
-        
-        # Créer un nouvel environnement virtuel
-        echo -e "${YELLOW}Création d'un nouvel environnement virtuel...${NC}"
-        $SYSTEM_PYTHON -m venv "$RESULTS_DIR/venv"
-        
-        # Vérifier si l'environnement a été créé correctement
-        if [ -f "$RESULTS_DIR/venv/bin/python" ]; then
-            echo -e "${GREEN}Environnement virtuel créé avec succès.${NC}"
-            VENV_PYTHON="$RESULTS_DIR/venv/bin/python"
-            VENV_PIP="$RESULTS_DIR/venv/bin/pip"
-        else
-            echo -e "${RED}Échec de la création de l'environnement virtuel. Utilisation de Python système.${NC}"
-            VENV_PYTHON="$SYSTEM_PYTHON"
-            VENV_PIP="pip3"
-        fi
-        
-        # Installer Flask
-        echo -e "${YELLOW}Installation de Flask...${NC}"
-        $VENV_PIP install flask
-        
-        echo -e "${GREEN}Flask installé avec succès.${NC}"
-    else
-        # Pour Linux/Raspberry Pi, installer Flask directement
-        if ! command -v python3 &> /dev/null; then
-            apt-get install -y python3 python3-pip
-        fi
-        
-        if ! python3 -c "import flask" &> /dev/null; then
-            echo -e "${YELLOW}Installation de Flask...${NC}"
-            pip3 install flask
-        fi
-        VENV_PYTHON="python3"
-    fi
-    
-    # Créer le script du serveur web
-    cat > "$RESULTS_DIR/web_server.py" << 'EOF'
-from flask import Flask, render_template, jsonify
-import sqlite3
-import os
-import sys
-
-app = Flask(__name__)
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/data')
-def get_data():
-    try:
-        db_path = os.path.join(os.path.dirname(__file__), 'benchmark_history.db')
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM benchmarks ORDER BY date DESC LIMIT 10")
-        data = cursor.fetchall()
-        conn.close()
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)})
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
-EOF
-
-    # Créer le dossier templates et le fichier HTML
-    mkdir -p "$RESULTS_DIR/templates"
-    cat > "$RESULTS_DIR/templates/index.html" << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>RPi Benchmark Results</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 20px;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        h1 {
-            color: #2c3e50;
-            text-align: center;
-        }
-        .chart-container {
-            width: 80%;
-            margin: 30px auto;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-    </style>
-</head>
-<body>
-    <h1>RPi Benchmark Results</h1>
-    <div class="chart-container">
-        <canvas id="cpuChart"></canvas>
-    </div>
-    <div class="chart-container">
-        <canvas id="diskChart"></canvas>
-    </div>
-    <div class="chart-container">
-        <canvas id="networkChart"></canvas>
-    </div>
-    
-    <script>
-        fetch('/data')
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    console.error('Error:', data.error);
-                    return;
-                }
-                
-                // Formater les dates pour l'affichage
-                const labels = data.map(row => {
-                    const date = new Date(row[1]);
-                    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-                });
-                
-                // Données CPU
-                new Chart(document.getElementById('cpuChart'), {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [
-                            {
-                                label: 'CPU Single Thread',
-                                data: data.map(row => row[3]),
-                                borderColor: 'rgba(255, 99, 132, 1)',
-                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                                fill: false
-                            },
-                            {
-                                label: 'CPU Multi Thread',
-                                data: data.map(row => row[6]),
-                                borderColor: 'rgba(54, 162, 235, 1)',
-                                backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                                fill: false
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        title: {
-                            display: true,
-                            text: 'Performance CPU'
-                        }
-                    }
-                });
-                
-                // Données Disque
-                new Chart(document.getElementById('diskChart'), {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [
-                            {
-                                label: 'Vitesse d\'écriture (MB/s)',
-                                data: data.map(row => row[11]),
-                                borderColor: 'rgba(255, 159, 64, 1)',
-                                backgroundColor: 'rgba(255, 159, 64, 0.2)',
-                                fill: false
-                            },
-                            {
-                                label: 'Vitesse de lecture (MB/s)',
-                                data: data.map(row => row[12]),
-                                borderColor: 'rgba(75, 192, 192, 1)',
-                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                                fill: false
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        title: {
-                            display: true,
-                            text: 'Performance Disque'
-                        }
-                    }
-                });
-                
-                // Données Réseau
-                new Chart(document.getElementById('networkChart'), {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [
-                            {
-                                label: 'Débit descendant (Mbps)',
-                                data: data.map(row => row[13]),
-                                borderColor: 'rgba(153, 102, 255, 1)',
-                                backgroundColor: 'rgba(153, 102, 255, 0.2)',
-                                fill: false
-                            },
-                            {
-                                label: 'Ping (ms)',
-                                data: data.map(row => row[15]),
-                                borderColor: 'rgba(255, 206, 86, 1)',
-                                backgroundColor: 'rgba(255, 206, 86, 0.2)',
-                                fill: false
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        title: {
-                            display: true,
-                            text: 'Performance Réseau'
-                        }
-                    }
-                });
-            })
-            .catch(error => {
-                console.error('Error fetching data:', error);
-            });
-    </script>
-</body>
-</html>
-EOF
-
-    # Démarrer le serveur web
-    echo -e "${GREEN}Démarrage du serveur web avec Python...${NC}"
-    if [ -f "$RESULTS_DIR/venv/bin/python" ]; then
-        cd "$RESULTS_DIR" && "$RESULTS_DIR/venv/bin/python" web_server.py &
-    else
-        cd "$RESULTS_DIR" && python3 web_server.py &
-    fi
-    
-    echo -e "${GREEN}Interface web démarrée sur http://localhost:8080${NC}"
-    echo -e "${YELLOW}Ouvrez cette URL dans votre navigateur pour voir les résultats.${NC}"
-    echo -e "${YELLOW}Appuyez sur Ctrl+C pour arrêter le serveur lorsque vous avez terminé.${NC}"
 }
 
 # Fonction pour planifier les benchmarks

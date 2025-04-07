@@ -27,7 +27,6 @@ Un script de benchmarking complet pour Raspberry Pi et autres systèmes Linux/ma
 - 📱 Interfaces utilisateur multiples
   - Interface en ligne de commande (CLI) avec menus intuitifs
   - Interface dialog pour une meilleure expérience visuelle
-  - Interface web pour visualiser les résultats
 
 ## 📋 Prérequis
 
@@ -78,9 +77,8 @@ Le script propose un menu interactif en ligne de commande avec les options suiva
 7. Benchmark Réseau
 8. Stress Test
 9. Exporter les résultats (CSV et JSON)
-10. Interface web
-11. Planifier les benchmarks
-12. Quitter
+10. Planifier les benchmarks
+11. Quitter
 
 ### Interface Dialog
 
@@ -117,17 +115,12 @@ Les résultats sont sauvegardés dans le dossier `benchmark_results/` avec :
 Le script offre plusieurs façons de visualiser les résultats :
 - **Tableaux formatés** : Affichage dans le terminal avec mise en forme et couleurs
 - **Graphiques HTML** : Génération de graphiques interactifs avec Chart.js
-- **Interface web** : Serveur Flask pour visualiser l'historique des benchmarks
 
 ### Exemples d'utilisation
 
 ```bash
 # Exécuter un benchmark périodique tous les jours à minuit
 (crontab -l 2>/dev/null; echo "0 0 * * * $(pwd)/rpi_benchmark.sh --cron") | crontab -
-
-# Lancer l'interface web pour visualiser les résultats
-./rpi_benchmark.sh
-# Puis sélectionner "Interface web" dans le menu
 ```
 
 ## 📝 Journal des modifications
@@ -138,7 +131,6 @@ Le script offre plusieurs façons de visualiser les résultats :
 - Génération de tableaux formatés avec couleurs
 - Tests réseau améliorés avec multi-serveurs et méthodes de secours
 - Génération de graphiques HTML interactifs
-- Interface web avec Flask pour visualiser l'historique
 - Planification des benchmarks via crontab
 - Export automatique des résultats en CSV et JSON
 - Base de données SQLite pour le stockage structuré
