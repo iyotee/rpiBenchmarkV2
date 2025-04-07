@@ -1206,8 +1206,63 @@ show_menu() {
     done
 }
 
-# Fonction pour afficher le menu en mode Dialog amélioré
+# Fonction pour afficher le menu en mode Dialog
 show_dialog_menu() {
+    if command -v dialog &> /dev/null; then
+        while true; do
+            choice=$(dialog --clear \
+                --backtitle "RPi Benchmark v2.0" \
+                --title "Menu Principal" \
+                --menu "Choisissez une option:" \
+                15 50 8 \
+                1 "Informations système" \
+                2 "Exécuter tous les benchmarks" \
+                3 "Benchmark CPU" \
+                4 "Benchmark Threads" \
+                5 "Benchmark Mémoire" \
+                6 "Benchmark Disque" \
+                7 "Benchmark Réseau" \
+                8 "Stress Test" \
+                9 "Exporter les résultats" \
+                10 "Planifier les benchmarks" \
+                11 "Quitter" \
+                2>&1 >/dev/tty)
+            
+            case $choice in
+                1)
+                    clear
+                    show_system_info
+                    ;;
+                2) clear; run_all_benchmarks ;;
+                3) clear; benchmark_cpu ;;
+                4) clear; benchmark_threads ;;
+                5) clear; benchmark_memory ;;
+                6) clear; benchmark_disk ;;
+                7) clear; benchmark_network ;;
+                8) clear; stress_test ;;
+                9) 
+                    clear
+                    export_csv
+                    export_json
+                    echo -e "${GREEN}Résultats exportés en CSV et JSON dans le dossier ${RESULTS_DIR}${NC}"
+                    read -p "Appuyez sur Entrée pour continuer..."
+                    ;;
+                10) clear; schedule_benchmark ;;
+                11) clear; exit 0 ;;
+                *) continue ;; # En cas d'annulation, retour au menu
+            esac
+            
+            echo -e "\nAppuyez sur Entrée pour continuer..."
+            read -r
+        done
+    else
+        # Interface améliorée si dialog n'est pas disponible
+        show_enhanced_menu
+    fi
+}
+
+# Fonction pour afficher le menu en mode amélioré (sans dialog)
+show_enhanced_menu() {
     while true; do
         clear
         echo -e "${BLUE}=====================================================${NC}"
@@ -1417,6 +1472,10 @@ main() {
         run_all_benchmarks
         rotate_logs
     elif [ "$1" == "--dialog" ]; then
+        if ! command -v dialog &> /dev/null; then
+            echo -e "${YELLOW}Le package 'dialog' n'est pas installé. Installation en cours...${NC}"
+            install_package "dialog"
+        fi
         show_dialog_menu
     else
         show_menu
