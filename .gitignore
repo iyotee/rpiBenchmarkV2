@@ -1,0 +1,10 @@
+# Dossier des résultats de benchmark
+benchmark_results/
+
+# Fichiers temporaires
+*.tmp
+*.log
+
+# Fichiers système
+.DS_Store
+Thumbs.db 
