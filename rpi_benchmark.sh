@@ -247,6 +247,24 @@ get_network_info() {
     esac
 }
 
+# Fonction pour pousser les modifications vers GitHub
+push_to_github() {
+    local commit_message="$1"
+    if [ -z "$commit_message" ]; then
+        commit_message="Update: Résultats de benchmark $(date +%Y-%m-%d_%H-%M-%S)"
+    fi
+
+    if [ -d ".git" ]; then
+        echo -e "${BLUE}Envoi des modifications vers GitHub...${NC}"
+        git add .
+        git commit -m "$commit_message"
+        git push
+        echo -e "${GREEN}Modifications envoyées avec succès!${NC}"
+    else
+        echo -e "${YELLOW}Ce dossier n'est pas un dépôt Git.${NC}"
+    fi
+}
+
 # Fonction pour le benchmark CPU
 benchmark_cpu() {
     log_result "\n${BLUE}=== BENCHMARK CPU ===${NC}"
@@ -280,6 +298,9 @@ benchmark_cpu() {
     printf "| Temps moyen         | ${GREEN}%-20s${NC} |\n" "${avg} secondes"
     printf "| Temps maximum       | ${GREEN}%-20s${NC} |\n" "${max} secondes"
     printf "+---------------------+----------------------+\n"
+    
+    # Pousser les résultats vers GitHub
+    push_to_github "Update: Résultats benchmark CPU"
 }
 
 # Fonction pour le benchmark threads
@@ -298,6 +319,9 @@ benchmark_threads() {
     printf "| Temps moyen         | ${GREEN}%-20s${NC} |\n" "${avg} secondes"
     printf "| Temps maximum       | ${GREEN}%-20s${NC} |\n" "${max} secondes"
     printf "+---------------------+----------------------+\n"
+    
+    # Pousser les résultats vers GitHub
+    push_to_github "Update: Résultats benchmark threads"
 }
 
 # Fonction pour le benchmark mémoire
@@ -316,6 +340,9 @@ benchmark_memory() {
     printf "| Temps moyen         | ${GREEN}%-20s${NC} |\n" "${avg} secondes"
     printf "| Temps maximum       | ${GREEN}%-20s${NC} |\n" "${max} secondes"
     printf "+---------------------+----------------------+\n"
+    
+    # Pousser les résultats vers GitHub
+    push_to_github "Update: Résultats benchmark mémoire"
 }
 
 # Fonction pour le benchmark disque
@@ -342,6 +369,9 @@ benchmark_disk() {
     
     # Nettoyage
     rm -f "$test_file"
+    
+    # Pousser les résultats vers GitHub
+    push_to_github "Update: Résultats benchmark disque"
 }
 
 # Fonction pour le benchmark réseau
@@ -360,6 +390,9 @@ benchmark_network() {
     printf "| Débit montant        | ${GREEN}%-18s${NC} |\n" "${upload} Mbps"
     printf "| Ping                 | ${GREEN}%-18s${NC} |\n" "${ping} ms"
     printf "+----------------------+-------------------+\n"
+    
+    # Pousser les résultats vers GitHub
+    push_to_github "Update: Résultats benchmark réseau"
 }
 
 # Fonction pour le stress test et monitoring température
@@ -398,6 +431,9 @@ stress_test() {
     
     log_result "${GREEN}Stress test terminé${NC}"
     log_result "  Température finale: $(vcgencmd measure_temp)"
+    
+    # Pousser les résultats vers GitHub
+    push_to_github "Update: Résultats stress test"
 }
 
 # Fonction pour exécuter tous les benchmarks
