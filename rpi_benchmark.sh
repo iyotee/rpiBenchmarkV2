@@ -974,22 +974,6 @@ generate_ascii_graph() {
     done
 }
 
-# Fonction pour envoyer une notification
-send_notification() {
-    local message="$1"
-    local type="$2"
-    
-    # Notification par email
-    if command -v mail &> /dev/null; then
-        echo "$message" | mail -s "RPi Benchmark Alert" "$USER@localhost"
-    fi
-    
-    # Notification Slack (si configuré)
-    if [ -n "$SLACK_WEBHOOK_URL" ]; then
-        curl -X POST -H 'Content-type: application/json' --data "{\"text\":\"$message\"}" "$SLACK_WEBHOOK_URL"
-    fi
-}
-
 # Fonction pour gérer la rotation des logs
 rotate_logs() {
     local logs=($(ls -t "$RESULTS_DIR"/*.log 2>/dev/null))
