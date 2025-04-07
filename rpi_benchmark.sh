@@ -1347,14 +1347,62 @@ start_web_interface() {
         # Vérifier si l'environnement virtuel existe déjà
         if [ ! -d "$RESULTS_DIR/venv" ]; then
             echo -e "${YELLOW}Création d'un environnement virtuel Python...${NC}"
+            
+            # Vérifier si venv est disponible
+            if ! python3 -m venv --help &>/dev/null; then
+                echo -e "${YELLOW}Installation du module venv...${NC}"
+                pip3 install virtualenv
+                python3 -m pip install --user virtualenv
+            fi
+            
+            # Supprimer tout environnement virtuel existant mais incomplet
+            rm -rf "$RESULTS_DIR/venv"
+            
+            # Créer un nouvel environnement virtuel
             python3 -m venv "$RESULTS_DIR/venv"
-            # Activer l'environnement virtuel et installer Flask
-            source "$RESULTS_DIR/venv/bin/activate"
-            pip install flask
-            echo -e "${GREEN}Flask installé avec succès dans l'environnement virtuel.${NC}"
+            
+            # Vérifier si l'environnement a été créé correctement
+            if [ ! -f "$RESULTS_DIR/venv/bin/python" ] && [ ! -f "$RESULTS_DIR/venv/Scripts/python.exe" ]; then
+                echo -e "${RED}Échec de la création de l'environnement virtuel.${NC}"
+                echo -e "${YELLOW}Tentative alternative avec virtualenv...${NC}"
+                python3 -m virtualenv "$RESULTS_DIR/venv"
+            fi
+            
+            # Vérifier encore une fois
+            if [ -f "$RESULTS_DIR/venv/bin/python" ]; then
+                VENV_PYTHON="$RESULTS_DIR/venv/bin/python"
+                VENV_PIP="$RESULTS_DIR/venv/bin/pip"
+            elif [ -f "$RESULTS_DIR/venv/Scripts/python.exe" ]; then
+                VENV_PYTHON="$RESULTS_DIR/venv/Scripts/python.exe"
+                VENV_PIP="$RESULTS_DIR/venv/Scripts/pip.exe"
+            else
+                echo -e "${RED}Impossible de créer un environnement virtuel. Utilisation de Python système.${NC}"
+                VENV_PYTHON="python3"
+                VENV_PIP="pip3"
+            fi
+            
+            # Installer Flask
+            echo -e "${YELLOW}Installation de Flask dans l'environnement virtuel...${NC}"
+            $VENV_PIP install flask
+            echo -e "${GREEN}Flask installé avec succès.${NC}"
         else
             echo -e "${GREEN}Utilisation de l'environnement virtuel existant.${NC}"
-            source "$RESULTS_DIR/venv/bin/activate"
+            if [ -f "$RESULTS_DIR/venv/bin/python" ]; then
+                VENV_PYTHON="$RESULTS_DIR/venv/bin/python"
+            elif [ -f "$RESULTS_DIR/venv/Scripts/python.exe" ]; then 
+                VENV_PYTHON="$RESULTS_DIR/venv/Scripts/python.exe"
+            else
+                echo -e "${YELLOW}Environnement virtuel incomplet, reconstruction...${NC}"
+                rm -rf "$RESULTS_DIR/venv"
+                python3 -m venv "$RESULTS_DIR/venv"
+                if [ -f "$RESULTS_DIR/venv/bin/python" ]; then
+                    VENV_PYTHON="$RESULTS_DIR/venv/bin/python"
+                    "$RESULTS_DIR/venv/bin/pip" install flask
+                else
+                    echo -e "${RED}Échec de la création de l'environnement virtuel. Utilisation de Python système.${NC}"
+                    VENV_PYTHON="python3"
+                fi
+            fi
         fi
     else
         # Pour Linux/Raspberry Pi, installer Flask directement
@@ -1366,6 +1414,7 @@ start_web_interface() {
             echo -e "${YELLOW}Installation de Flask...${NC}"
             pip3 install flask
         fi
+        VENV_PYTHON="python3"
     fi
     
     # Créer le script du serveur web
@@ -1557,8 +1606,8 @@ EOF
 
     # Démarrer le serveur web
     if [ "$PLATFORM" = "macos" ]; then
-        echo -e "${GREEN}Démarrage du serveur web avec l'environnement virtuel...${NC}"
-        cd "$RESULTS_DIR" && "$RESULTS_DIR/venv/bin/python" web_server.py &
+        echo -e "${GREEN}Démarrage du serveur web avec Python...${NC}"
+        cd "$RESULTS_DIR" && $VENV_PYTHON web_server.py &
     else
         cd "$RESULTS_DIR" && python3 web_server.py &
     fi
