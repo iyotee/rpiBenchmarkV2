@@ -1,4 +1,8 @@
-# <img src="https://raw.githubusercontent.com/iyotee/rpiBenchmarkV2/main/logo.png" alt="RPiBenchmark Logo" width="50" height="50"> RPiBenchmark
+# RPiBenchmark
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/iyotee/rpiBenchmarkV2/main/logo.png" alt="RPiBenchmark Logo" width="400">
+</div>
 
 Un script de benchmarking complet pour Raspberry Pi et autres systèmes Linux/macOS.
 
