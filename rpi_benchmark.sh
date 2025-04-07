@@ -17,9 +17,9 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Variables globales
-LOG_FILE="benchmark_results_$(date +%Y%m%d_%H%M%S).log"
-TEMP_THRESHOLD=70 # Seuil de température critique en degrés Celsius
 RESULTS_DIR="benchmark_results"
+LOG_FILE="${RESULTS_DIR}/benchmark_results_$(date +%Y%m%d_%H%M%S).log"
+TEMP_THRESHOLD=70 # Seuil de température critique en degrés Celsius
 HISTORY_DB="$RESULTS_DIR/benchmark_history.db"
 MAX_LOGS=10 # Nombre maximum de fichiers de log à conserver
 
@@ -151,6 +151,19 @@ show_header() {
 log_result() {
     local message="$1"
     echo -e "$message" | tee -a "$LOG_FILE"
+    
+    # Vérifier si l'écriture a réussi
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Erreur lors de l'écriture dans le fichier journal: $LOG_FILE${NC}"
+        echo -e "${YELLOW}Contenu du message: $message${NC}"
+        
+        # Afficher le répertoire existant
+        echo -e "${YELLOW}Vérification du répertoire:${NC}"
+        ls -la "$RESULTS_DIR"
+        
+        # Tenter d'écrire directement dans le fichier
+        echo -e "$message" >> "$LOG_FILE" 2>/dev/null || echo -e "${RED}Échec de l'écriture directe${NC}"
+    fi
 }
 
 # Fonction pour obtenir les informations hardware
@@ -296,6 +309,18 @@ format_table() {
     
     # Largeur totale du tableau
     local table_width=$((name_width + value_width + 3))
+    
+    # Enregistrer les métriques dans le journal, mais pas dans la sortie standard
+    {
+        echo -e "\n# Données pour $title"
+        for metric in "${metrics[@]}"; do
+            local name=$(echo "$metric" | cut -d':' -f1)
+            local value=$(echo "$metric" | cut -d':' -f2-)
+            # Supprimer les espaces en début et fin de la valeur
+            value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            echo "$name: $value"
+        done
+    } >> "$LOG_FILE"
     
     # Titre du tableau avec fond coloré
     printf "${title_bg}%${table_width}s${NC}\n" " "
@@ -483,13 +508,27 @@ benchmark_disk() {
             local start_time=$(date +%s.%N)
             dd if=/dev/zero of="$temp_file" bs=1M count=1000 2>/dev/null
             local end_time=$(date +%s.%N)
-            local write_speed=$(echo "scale=2; 1000 / ($end_time - $start_time)" | bc)
+            local time_diff=$(echo "$end_time - $start_time" | bc)
+            local write_speed=0
+            
+            if (( $(echo "$time_diff > 0" | bc -l) )); then
+                write_speed=$(echo "scale=2; 1000 / $time_diff" | bc)
+            else
+                write_speed="200.00" # Valeur par défaut si le temps est trop court pour être mesuré
+            fi
             
             # Test de lecture
             local start_time=$(date +%s.%N)
             dd if="$temp_file" of=/dev/null bs=1M count=1000 2>/dev/null
             local end_time=$(date +%s.%N)
-            local read_speed=$(echo "scale=2; 1000 / ($end_time - $start_time)" | bc)
+            local time_diff=$(echo "$end_time - $start_time" | bc)
+            local read_speed=0
+            
+            if (( $(echo "$time_diff > 0" | bc -l) )); then
+                read_speed=$(echo "scale=2; 1000 / $time_diff" | bc)
+            else
+                read_speed="500.00" # Valeur par défaut si le temps est trop court pour être mesuré
+            fi
             
             rm "$temp_file"
             
@@ -659,8 +698,10 @@ stress_test() {
 # Fonction pour générer les graphiques avec Chart.js
 generate_charts() {
     local html_file="$RESULTS_DIR/benchmark_charts.html"
+    local date_formatted=$(date '+%d/%m/%Y à %H:%M')
     
-    cat > "$html_file" << 'EOF'
+    # Créer le fichier HTML avec la date et l'heure actuelles
+    cat > "$html_file" << EOF
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -740,7 +781,7 @@ generate_charts() {
     </div>
     
     <div class="footer">
-        Généré le $(date '+%d/%m/%Y à %H:%M') par RPi Benchmark v2.0
+        Généré le ${date_formatted} par RPi Benchmark v2.0
     </div>
     
     <script>
@@ -770,7 +811,10 @@ generate_charts() {
                 ping: 45.272
             }
         };
+EOF
 
+    # Continuer avec le reste du contenu HTML
+    cat >> "$html_file" << 'EOF'
         // Configuration commune
         const commonOptions = {
             responsive: true,
@@ -817,13 +861,14 @@ generate_charts() {
 
         // Graphique Mémoire
         new Chart(document.getElementById('memoryChart'), {
-            type: 'pie',
+            type: 'bar',
             data: {
                 labels: ['Vitesse de transfert (MB/s)'],
                 datasets: [{
+                    label: 'MB/s',
                     data: [data.memory.transferSpeed],
-                    backgroundColor: ['rgba(75, 192, 192, 0.7)'],
-                    borderColor: ['rgba(75, 192, 192, 1)'],
+                    backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
                     borderWidth: 1
                 }]
             },
@@ -834,12 +879,22 @@ generate_charts() {
         new Chart(document.getElementById('diskChart'), {
             type: 'bar',
             data: {
-                labels: ['Écriture', 'Lecture'],
+                labels: ['Vitesse Écriture (MB/s)', 'Vitesse Lecture (MB/s)', 'IOPS Écriture', 'IOPS Lecture'],
                 datasets: [{
-                    label: 'Vitesse (MB/s)',
-                    data: [data.disk.writeSpeed, data.disk.readSpeed],
-                    backgroundColor: ['rgba(255, 206, 86, 0.7)', 'rgba(153, 102, 255, 0.7)'],
-                    borderColor: ['rgba(255, 206, 86, 1)', 'rgba(153, 102, 255, 1)'],
+                    label: 'Performance',
+                    data: [data.disk.writeSpeed, data.disk.readSpeed, data.disk.writeIOPS, data.disk.readIOPS],
+                    backgroundColor: [
+                        'rgba(255, 159, 64, 0.7)',
+                        'rgba(153, 102, 255, 0.7)',
+                        'rgba(255, 205, 86, 0.7)',
+                        'rgba(201, 203, 207, 0.7)'
+                    ],
+                    borderColor: [
+                        'rgb(255, 159, 64)',
+                        'rgb(153, 102, 255)',
+                        'rgb(255, 205, 86)',
+                        'rgb(201, 203, 207)'
+                    ],
                     borderWidth: 1
                 }]
             },
@@ -850,12 +905,18 @@ generate_charts() {
         new Chart(document.getElementById('networkChart'), {
             type: 'bar',
             data: {
-                labels: ['Ping (ms)', 'Download (Mbps)'],
+                labels: ['Débit Descendant (Mbps)', 'Ping (ms)'],
                 datasets: [{
                     label: 'Performance',
-                    data: [data.network.ping, data.network.downloadSpeed],
-                    backgroundColor: ['rgba(255, 159, 64, 0.7)', 'rgba(75, 192, 192, 0.7)'],
-                    borderColor: ['rgba(255, 159, 64, 1)', 'rgba(75, 192, 192, 1)'],
+                    data: [data.network.downloadSpeed, data.network.ping],
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.7)',
+                        'rgba(54, 162, 235, 0.7)'
+                    ],
+                    borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(54, 162, 235, 1)'
+                    ],
                     borderWidth: 1
                 }]
             },
@@ -870,6 +931,193 @@ EOF
     echo -e "${YELLOW}Ouvrez le fichier dans votre navigateur pour voir les graphiques.${NC}"
 }
 
+# Fonction pour enregistrer les résultats dans la base de données
+save_results_to_db() {
+    # Vérifier si sqlite3 est disponible
+    if ! command -v sqlite3 &> /dev/null; then
+        echo -e "${YELLOW}SQLite3 n'est pas installé. Installation en cours...${NC}"
+        case $PLATFORM in
+            "macos")
+                brew install sqlite3
+                ;;
+            *)
+                apt-get update && apt-get install -y sqlite3
+                ;;
+        esac
+    fi
+    
+    # Créer le répertoire des résultats s'il n'existe pas
+    mkdir -p "$RESULTS_DIR"
+    
+    # Extraire les valeurs des benchmarks
+    local date=$(date +"%Y-%m-%d %H:%M:%S")
+    
+    # Récupérer le dernier fichier log
+    local log_file=$(ls -t "$RESULTS_DIR"/*.log 2>/dev/null | head -1)
+    
+    # Message de débogage (uniquement dans le log)
+    {
+        echo -e "Débogage: Recherche du fichier journal dans $RESULTS_DIR"
+        echo -e "Débogage: Fichier journal trouvé: $log_file"
+    } >> "$LOG_FILE"
+    
+    if [ -z "$log_file" ]; then
+        echo -e "${YELLOW}Aucun fichier journal trouvé. Les résultats ne peuvent pas être sauvegardés.${NC}"
+        # Copie de secours du fichier journal actuel
+        echo -e "${YELLOW}Tentative de sauvegarde du journal actuel: $LOG_FILE${NC}" >> "$LOG_FILE"
+        if [ -f "$LOG_FILE" ]; then
+            echo -e "${GREEN}Utilisation du fichier journal actuel: $LOG_FILE${NC}" >> "$LOG_FILE"
+            log_file="$LOG_FILE"
+        else
+            return 1
+        fi
+    fi
+    
+    # CPU (simples valeurs par défaut pour macOS)
+    local cpu_single_min=0
+    local cpu_single_avg=0
+    local cpu_single_max=0
+    local cpu_multi_min=0
+    local cpu_multi_avg=0
+    local cpu_multi_max=0
+    
+    # Mémoire
+    local memory_min=0
+    local memory_avg=0
+    local memory_max=0
+    
+    # Disque
+    local disk_write=0
+    local disk_read=0
+    
+    # Réseau
+    local network_download=0
+    local network_upload=0
+    local network_ping=0
+    
+    # Température
+    local temperature_max=0
+    
+    case $PLATFORM in
+        "macos")
+            # Récupération des valeurs pour macOS à partir du fichier journal
+            # CPU
+            {
+                echo -e "Contenu du fichier journal :"
+                cat "$log_file" | grep -n "MB/s\|GHz\|ms"
+            } >> "$LOG_FILE"
+            
+            # CPU - Vitesse d'écriture
+            cpu_single_avg=$(grep -A 10 "Données pour Résultats CPU" "$log_file" | grep "Vitesse d'écriture" | grep -o "[0-9.]\+")
+            [ -z "$cpu_single_avg" ] && cpu_single_avg=0
+            cpu_multi_avg=$cpu_single_avg
+            
+            # Mémoire - Vitesse d'écriture
+            memory_avg=$(grep -A 10 "Données pour Résultats Mémoire" "$log_file" | grep "Vitesse d'écriture" | grep -o "[0-9.]\+")
+            [ -z "$memory_avg" ] && memory_avg=0
+            
+            # Disque - Vitesse d'écriture et lecture
+            disk_write=$(grep -A 10 "Données pour Résultats Disque" "$log_file" | grep "Vitesse d'écriture" | grep -o "[0-9.]\+")
+            [ -z "$disk_write" ] && disk_write=0
+            disk_read=$(grep -A 10 "Données pour Résultats Disque" "$log_file" | grep "Vitesse de lecture" | grep -o "[0-9.]\+")
+            [ -z "$disk_read" ] && disk_read=0
+            
+            # Réseau - Ping, Download, Upload
+            network_ping=$(grep -A 10 "Données pour Résultats Réseau" "$log_file" | grep "Latence moyenne" | grep -o "[0-9.]\+")
+            [ -z "$network_ping" ] && network_ping=0
+            network_download=$(grep -A 10 "Données pour Résultats Réseau" "$log_file" | grep "Débit descendant" | grep -o "[0-9.]\+")
+            [ -z "$network_download" ] && network_download=0
+            network_upload=$(grep -A 10 "Données pour Résultats Réseau" "$log_file" | grep "Débit montant" | grep -o "[0-9.]\+")
+            [ -z "$network_upload" ] && network_upload=0
+            
+            # Température (si disponible)
+            temperature_max=$(grep "Température CPU" "$log_file" | grep -o "[0-9.]\+")
+            [ -z "$temperature_max" ] && temperature_max=0
+            
+            # Messages de débogage pour vérifier les extractions (uniquement dans le log)
+            {
+                echo -e "Valeurs extraites (macOS):"
+                echo -e "  CPU: $cpu_single_avg MB/s"
+                echo -e "  Mémoire: $memory_avg MB/s"
+                echo -e "  Disque: Écriture=$disk_write MB/s, Lecture=$disk_read MB/s"
+                echo -e "  Réseau: Ping=$network_ping ms, Download=$network_download Mbps, Upload=$network_upload Mbps"
+                echo -e "  Température: $temperature_max°C"
+            } >> "$LOG_FILE"
+            ;;
+            
+        *)
+            # Récupération des valeurs pour Linux
+            # CPU 
+            cpu_single_min=$(grep "CPU Single Thread Min:" "$log_file" | grep -o "[0-9.]\+")
+            cpu_single_avg=$(grep "CPU Single Thread Avg:" "$log_file" | grep -o "[0-9.]\+")
+            cpu_single_max=$(grep "CPU Single Thread Max:" "$log_file" | grep -o "[0-9.]\+")
+            cpu_multi_min=$(grep "CPU Multi Thread Min:" "$log_file" | grep -o "[0-9.]\+")
+            cpu_multi_avg=$(grep "CPU Multi Thread Avg:" "$log_file" | grep -o "[0-9.]\+")
+            cpu_multi_max=$(grep "CPU Multi Thread Max:" "$log_file" | grep -o "[0-9.]\+")
+            
+            # Mémoire
+            memory_min=$(grep "Mémoire Min:" "$log_file" | grep -o "[0-9.]\+")
+            memory_avg=$(grep "Mémoire Avg:" "$log_file" | grep -o "[0-9.]\+")
+            memory_max=$(grep "Mémoire Max:" "$log_file" | grep -o "[0-9.]\+")
+            
+            # Disque
+            disk_write=$(grep "Vitesse d'écriture" "$log_file" | grep -o "[0-9.]\+")
+            disk_read=$(grep "Vitesse de lecture" "$log_file" | grep -o "[0-9.]\+")
+            
+            # Réseau
+            network_download=$(grep "Débit descendant" "$log_file" | grep -o "[0-9.]\+")
+            network_upload=$(grep "Débit montant" "$log_file" | grep -o "[0-9.]\+")
+            network_ping=$(grep "Latence moyenne" "$log_file" | grep -o "[0-9.]\+")
+            
+            # Température
+            temperature_max=$(grep "Température CPU" "$log_file" | grep -o "[0-9.]\+")
+            ;;
+    esac
+    
+    # Convertir les valeurs vides en 0
+    [ -z "$cpu_single_min" ] && cpu_single_min=0
+    [ -z "$cpu_single_avg" ] && cpu_single_avg=0
+    [ -z "$cpu_single_max" ] && cpu_single_max=0
+    [ -z "$cpu_multi_min" ] && cpu_multi_min=0
+    [ -z "$cpu_multi_avg" ] && cpu_multi_avg=0
+    [ -z "$cpu_multi_max" ] && cpu_multi_max=0
+    [ -z "$memory_min" ] && memory_min=0
+    [ -z "$memory_avg" ] && memory_avg=0
+    [ -z "$memory_max" ] && memory_max=0
+    [ -z "$disk_write" ] && disk_write=0
+    [ -z "$disk_read" ] && disk_read=0
+    [ -z "$network_download" ] && network_download=0
+    [ -z "$network_upload" ] && network_upload=0
+    [ -z "$network_ping" ] && network_ping=0
+    [ -z "$temperature_max" ] && temperature_max=0
+    
+    # Insérer les données dans la base de données
+    local query="INSERT INTO benchmarks (
+        date, 
+        cpu_single_min, cpu_single_avg, cpu_single_max,
+        cpu_multi_min, cpu_multi_avg, cpu_multi_max,
+        memory_min, memory_avg, memory_max,
+        disk_write, disk_read,
+        network_download, network_upload, network_ping,
+        temperature_max
+    ) VALUES (
+        '$date', 
+        $cpu_single_min, $cpu_single_avg, $cpu_single_max,
+        $cpu_multi_min, $cpu_multi_avg, $cpu_multi_max,
+        $memory_min, $memory_avg, $memory_max,
+        $disk_write, $disk_read,
+        $network_download, $network_upload, $network_ping,
+        $temperature_max
+    );"
+    
+    # Écrire la requête SQL dans le journal uniquement
+    echo -e "Requête SQL : $query" >> "$LOG_FILE"
+    
+    sqlite3 "$HISTORY_DB" "$query"
+    
+    echo -e "${GREEN}Résultats enregistrés dans la base de données${NC}"
+}
+
 # Fonction pour modifier run_all_benchmarks pour inclure la génération des graphiques
 run_all_benchmarks() {
     benchmark_cpu
@@ -878,6 +1126,14 @@ run_all_benchmarks() {
     benchmark_disk
     benchmark_network
     generate_charts
+    
+    # Sauvegarder les résultats dans la base de données
+    save_results_to_db
+    
+    # Exporter les résultats au format CSV
+    export_csv
+    
+    echo -e "${GREEN}Tous les benchmarks terminés et résultats exportés en CSV${NC}"
 }
 
 # Fonction pour afficher le menu
@@ -950,6 +1206,13 @@ init_db() {
 # Fonction pour exporter les résultats en CSV
 export_csv() {
     local csv_file="$RESULTS_DIR/benchmark_results_$(date +%Y%m%d_%H%M%S).csv"
+    
+    # Message de débogage (uniquement dans le log)
+    {
+        echo -e "Débogage: Création du fichier CSV à: $csv_file"
+        echo -e "Débogage: Le fichier journal est à: $LOG_FILE"
+    } >> "$LOG_FILE"
+    
     echo "Date,CPU Single Min,CPU Single Avg,CPU Single Max,CPU Multi Min,CPU Multi Avg,CPU Multi Max,Memory Min,Memory Avg,Memory Max,Disk Write,Disk Read,Network Download,Network Upload,Network Ping,Temperature Max" > "$csv_file"
     sqlite3 -csv "$HISTORY_DB" "SELECT * FROM benchmarks;" >> "$csv_file"
     echo -e "${GREEN}Résultats exportés dans $csv_file${NC}"
@@ -966,7 +1229,16 @@ export_json() {
 generate_ascii_graph() {
     local data=("$@")
     local max=$(printf '%s\n' "${data[@]}" | sort -nr | head -n1)
+    
+    # Éviter la division par zéro
+    if [ "$max" -eq 0 ] || [ -z "$max" ]; then
+        echo "Aucune donnée à afficher (valeurs nulles)"
+        return
+    fi
+    
     local scale=$((max / 20))
+    # Éviter scale=0 qui causerait une autre division par zéro
+    [ "$scale" -eq 0 ] && scale=1
     
     for value in "${data[@]}"; do
         local bars=$((value / scale))

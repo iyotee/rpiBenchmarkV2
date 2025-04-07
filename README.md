@@ -52,13 +52,42 @@ Le script propose un menu interactif avec les options suivantes :
 5. Planifier un benchmark
 6. Quitter
 
+## 🔧 Options et arguments
+
+Le script accepte plusieurs arguments en ligne de commande :
+
+```bash
+# Exécuter en mode automatique (pour crontab)
+./rpi_benchmark.sh --cron
+
+# Utiliser l'interface dialog pour une meilleure expérience visuelle
+./rpi_benchmark.sh --dialog
+```
+
+### Options disponibles :
+
+- `--cron` : Mode non-interactif, exécute tous les benchmarks et exporte les résultats en CSV sans intervention utilisateur. Idéal pour les tâches planifiées.
+- `--dialog` : Utilise l'interface dialog pour une navigation plus intuitive dans les menus. Nécessite le package `dialog`.
+
 ## 📊 Résultats
 
 Les résultats sont sauvegardés dans le dossier `benchmark_results/` avec :
-- Rapports détaillés
-- Graphiques de performance
-- Logs système
-- Données de température
+- Rapports détaillés (fichiers `.log`)
+- Fichiers CSV avec l'historique des performances (fichiers `.csv`)
+- Fichiers JSON pour une analyse programmatique (fichiers `.json`)
+- Graphiques interactifs en HTML (fichiers `.html`)
+- Base de données SQLite pour le stockage structuré (fichier `benchmark_history.db`)
+
+### Exemples d'utilisation
+
+```bash
+# Exécuter un benchmark périodique tous les jours à minuit
+(crontab -l 2>/dev/null; echo "0 0 * * * $(pwd)/rpi_benchmark.sh --cron") | crontab -
+
+# Lancer l'interface web pour visualiser les résultats
+./rpi_benchmark.sh
+# Puis sélectionner "Interface web" dans le menu
+```
 
 ## 📝 Journal des modifications
 
