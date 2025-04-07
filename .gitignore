@@ -1,10 +1,40 @@
-# Dossier des résultats de benchmark
+# Résultats de benchmark
 benchmark_results/
+benchmark_results_*.log
+benchmark_charts.html
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
 
 # Fichiers temporaires
 *.tmp
+*.temp
+temp/
+tmp/
+
+# Fichiers de logs
 *.log
 
-# Fichiers système
+# Fichiers spécifiques à macOS
 .DS_Store
-Thumbs.db 
+.AppleDouble
+.LSOverride
+._*
+
+# Fichiers spécifiques à Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Fichiers IDE/Éditeurs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~ 
