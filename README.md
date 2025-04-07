@@ -12,9 +12,22 @@ Un script de benchmarking complet pour Raspberry Pi et autres systèmes Linux/ma
 - ⚡ Tests de performance CPU, mémoire et disque
 - 🌡️ Surveillance de la température
 - 📶 Tests de réseau et de bande passante
+  - Mesure de latence multi-serveurs (Google, Cloudflare, OpenDNS)
+  - Test de débit avec plusieurs méthodes de secours (networkQuality, speedtest-cli, curl)
 - 📈 Génération de rapports et graphiques
+  - Tableaux formatés avec couleurs pour une meilleure lisibilité
+  - Graphiques HTML interactifs avec Chart.js
+  - Interface web dynamique pour visualiser l'historique des benchmarks
 - 🔄 Tests de stress et de stabilité
 - 📅 Planification des benchmarks
+- 💾 Exportation des données
+  - Format CSV pour l'analyse dans des tableurs
+  - Format JSON pour l'intégration avec d'autres outils
+  - Base de données SQLite pour le stockage et les requêtes
+- 📱 Interfaces utilisateur multiples
+  - Interface en ligne de commande (CLI) avec menus intuitifs
+  - Interface dialog pour une meilleure expérience visuelle
+  - Interface web pour visualiser les résultats
 
 ## 📋 Prérequis
 
@@ -24,13 +37,19 @@ Un script de benchmarking complet pour Raspberry Pi et autres systèmes Linux/ma
   - sysbench
   - stress-ng
   - speedtest-cli
+  - bc
+  - python3
+  - sqlite3
+  - dialog (pour l'interface dialog)
   - dnsutils (Linux uniquement)
+  - hdparm (Linux uniquement)
+  - osx-cpu-temp (macOS uniquement, optionnel)
 
 ## 🛠️ Installation
 
 ```bash
 # Cloner le dépôt
-git clone https://github.com/votre-username/rpiBenchmarkV2.git
+git clone https://github.com/iyotee/rpiBenchmarkV2.git
 cd rpiBenchmarkV2
 
 # Rendre le script exécutable
@@ -40,17 +59,32 @@ chmod +x rpi_benchmark.sh
 ## 💻 Utilisation
 
 ```bash
-# Exécuter le script
+# Exécuter le script avec l'interface CLI standard
 ./rpi_benchmark.sh
+
+# Exécuter le script avec l'interface dialog
+./rpi_benchmark.sh --dialog
 ```
 
-Le script propose un menu interactif avec les options suivantes :
+### Interface CLI
+
+Le script propose un menu interactif en ligne de commande avec les options suivantes :
 1. Afficher les informations système
-2. Exécuter les benchmarks
-3. Effectuer un test de stress
-4. Exporter les résultats
-5. Planifier un benchmark
-6. Quitter
+2. Exécuter tous les benchmarks
+3. Benchmark CPU
+4. Benchmark Threads
+5. Benchmark Mémoire
+6. Benchmark Disque
+7. Benchmark Réseau
+8. Stress Test
+9. Exporter les résultats (CSV et JSON)
+10. Interface web
+11. Planifier les benchmarks
+12. Quitter
+
+### Interface Dialog
+
+Une interface plus visuelle utilisant le package dialog, offrant les mêmes fonctionnalités que l'interface CLI mais avec une présentation améliorée.
 
 ## 🔧 Options et arguments
 
@@ -78,6 +112,13 @@ Les résultats sont sauvegardés dans le dossier `benchmark_results/` avec :
 - Graphiques interactifs en HTML (fichiers `.html`)
 - Base de données SQLite pour le stockage structuré (fichier `benchmark_history.db`)
 
+### Visualisation des résultats
+
+Le script offre plusieurs façons de visualiser les résultats :
+- **Tableaux formatés** : Affichage dans le terminal avec mise en forme et couleurs
+- **Graphiques HTML** : Génération de graphiques interactifs avec Chart.js
+- **Interface web** : Serveur Flask pour visualiser l'historique des benchmarks
+
 ### Exemples d'utilisation
 
 ```bash
@@ -93,10 +134,15 @@ Les résultats sont sauvegardés dans le dossier `benchmark_results/` avec :
 
 ### v2.0.0
 - Support multi-plateforme (Raspberry Pi, Linux, macOS)
-- Interface utilisateur améliorée
-- Génération de graphiques
-- Planification des benchmarks
-- Export des résultats en CSV
+- Interface utilisateur améliorée (CLI et dialog)
+- Génération de tableaux formatés avec couleurs
+- Tests réseau améliorés avec multi-serveurs et méthodes de secours
+- Génération de graphiques HTML interactifs
+- Interface web avec Flask pour visualiser l'historique
+- Planification des benchmarks via crontab
+- Export automatique des résultats en CSV et JSON
+- Base de données SQLite pour le stockage structuré
+- Amélioration de la gestion des erreurs et compatibilité macOS
 
 ## 📄 Licence
 
