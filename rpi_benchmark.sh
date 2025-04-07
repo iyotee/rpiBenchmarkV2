@@ -1206,44 +1206,72 @@ show_menu() {
     done
 }
 
-# Fonction pour afficher le menu avec dialog
+# Fonction pour afficher le menu en mode Dialog amélioré
 show_dialog_menu() {
     while true; do
-        echo -e "${YELLOW}Menu Principal:${NC}"
-        echo "1. Afficher les informations système"
-        echo "2. Exécuter tous les benchmarks"
-        echo "3. Benchmark CPU"
-        echo "4. Benchmark Threads"
-        echo "5. Benchmark Mémoire"
-        echo "6. Benchmark Disque"
-        echo "7. Benchmark Réseau"
-        echo "8. Stress Test"
-        echo "9. Exporter les résultats (CSV et JSON)"
-        echo "10. Planifier les benchmarks"
-        echo "11. Quitter"
+        clear
+        echo -e "${BLUE}=====================================================${NC}"
+        echo -e "${BLUE}    Script de Benchmarking Raspberry Pi v2.0        ${NC}"
+        echo -e "${BLUE}=====================================================${NC}"
+        echo -e "${YELLOW}Date: $(date)${NC}"
+        echo -e "${YELLOW}Log file: $LOG_FILE${NC}"
+        echo -e "${BLUE}=====================================================${NC}\n"
+        
+        echo -e "${CYAN}╔════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║${YELLOW}               MENU PRINCIPAL               ${CYAN}║${NC}"
+        echo -e "${CYAN}╠════════════════════════════════════════════════╣${NC}"
+        echo -e "${CYAN}║${NC} 1. Afficher les informations système         ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} 2. Exécuter tous les benchmarks              ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} 3. Benchmark CPU                             ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} 4. Benchmark Threads                         ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} 5. Benchmark Mémoire                         ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} 6. Benchmark Disque                          ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} 7. Benchmark Réseau                          ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} 8. Stress Test                               ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} 9. Exporter les résultats (CSV et JSON)      ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} 10. Planifier les benchmarks                 ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC} 11. Quitter                                  ${CYAN}║${NC}"
+        echo -e "${CYAN}╚════════════════════════════════════════════════╝${NC}"
         echo ""
-        read -p "Votre choix: " choice
+        echo -e "${GREEN}Entrez votre choix [1-11]:${NC} "
+        read -p "" choice
 
         case $choice in
-            1) show_system_info ;;
-            2) run_all_benchmarks ;;
-            3) benchmark_cpu ;;
-            4) benchmark_threads ;;
-            5) benchmark_memory ;;
-            6) benchmark_disk ;;
-            7) benchmark_network ;;
-            8) stress_test ;;
+            1) clear; show_system_info ;;
+            2) clear; run_all_benchmarks ;;
+            3) clear; benchmark_cpu ;;
+            4) clear; benchmark_threads ;;
+            5) clear; benchmark_memory ;;
+            6) clear; benchmark_disk ;;
+            7) clear; benchmark_network ;;
+            8) clear; stress_test ;;
             9) 
+                clear
                 export_csv
                 export_json
                 echo -e "${GREEN}Résultats exportés en CSV et JSON dans le dossier ${RESULTS_DIR}${NC}"
                 read -p "Appuyez sur Entrée pour continuer..."
                 ;;
-            10) schedule_benchmark ;;
-            11) exit 0 ;;
-            *) echo -e "${RED}Choix invalide. Veuillez réessayer.${NC}" ;;
+            10) clear; schedule_benchmark ;;
+            11) clear; exit 0 ;;
+            *) 
+                echo -e "${RED}Choix invalide. Veuillez réessayer.${NC}"
+                sleep 2
+                ;;
         esac
+        
+        if [[ $choice != 9 ]] && [[ $choice != 11 ]]; then
+            echo ""
+            echo -e "${YELLOW}Appuyez sur Entrée pour revenir au menu principal...${NC}"
+            read -p ""
+        fi
     done
+}
+
+# Fonction pour afficher les informations système
+show_system_info() {
+    get_hardware_info
+    get_network_info
 }
 
 # Fonction pour initialiser la base de données SQLite
@@ -1389,9 +1417,6 @@ main() {
         run_all_benchmarks
         rotate_logs
     elif [ "$1" == "--dialog" ]; then
-        if ! command -v dialog &> /dev/null; then
-            install_package "dialog"
-        fi
         show_dialog_menu
     else
         show_menu
