@@ -259,6 +259,16 @@ get_cpu_cores() {
     esac
 }
 
+# Fonction pour formater les nombres
+format_number() {
+    local number=$1
+    if [[ $number =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        printf "%.2f" "$number"
+    else
+        echo "0.00"
+    fi
+}
+
 # Fonction pour le benchmark CPU
 benchmark_cpu() {
     log_result "\n${BLUE}=== BENCHMARK CPU ===${NC}"
@@ -267,15 +277,15 @@ benchmark_cpu() {
     log_result "${YELLOW}Test single-thread:${NC}"
     local results=$(sysbench cpu --cpu-max-prime=20000 --threads=1 run 2>/dev/null)
     local events=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
-    local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}')
+    local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}' | sed 's/s$//')
     local ops=$(echo "$results" | grep 'events per second:' | awk '{print $NF}')
     
     printf "+---------------------+----------------------+\n"
     printf "| ${CYAN}Métrique${NC}            | ${CYAN}Score${NC}                |\n"
     printf "+---------------------+----------------------+\n"
     printf "| Événements          | ${GREEN}%-20s${NC} |\n" "${events:-0}"
-    printf "| Temps total         | ${GREEN}%-20s${NC} |\n" "${time:-0} sec"
-    printf "| Opérations/sec      | ${GREEN}%-20.2f${NC} |\n" "${ops:-0}"
+    printf "| Temps total         | ${GREEN}%-20s${NC} |\n" "$(format_number "$time") sec"
+    printf "| Opérations/sec      | ${GREEN}%-20s${NC} |\n" "$(format_number "$ops")"
     printf "+---------------------+----------------------+\n"
     
     # Test multi-thread
@@ -283,15 +293,15 @@ benchmark_cpu() {
     local cpu_cores=$(get_cpu_cores)
     local results=$(sysbench cpu --cpu-max-prime=20000 --threads=$cpu_cores run 2>/dev/null)
     local events=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
-    local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}')
+    local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}' | sed 's/s$//')
     local ops=$(echo "$results" | grep 'events per second:' | awk '{print $NF}')
     
     printf "+---------------------+----------------------+\n"
     printf "| ${CYAN}Métrique${NC}            | ${CYAN}Score${NC}                |\n"
     printf "+---------------------+----------------------+\n"
     printf "| Événements          | ${GREEN}%-20s${NC} |\n" "${events:-0}"
-    printf "| Temps total         | ${GREEN}%-20s${NC} |\n" "${time:-0} sec"
-    printf "| Opérations/sec      | ${GREEN}%-20.2f${NC} |\n" "${ops:-0}"
+    printf "| Temps total         | ${GREEN}%-20s${NC} |\n" "$(format_number "$time") sec"
+    printf "| Opérations/sec      | ${GREEN}%-20s${NC} |\n" "$(format_number "$ops")"
     printf "+---------------------+----------------------+\n"
 }
 
@@ -301,16 +311,16 @@ benchmark_threads() {
     
     local cpu_cores=$(get_cpu_cores)
     local results=$(sysbench threads --threads=$cpu_cores --thread-yields=1000 --thread-locks=8 run 2>/dev/null)
-    local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}')
+    local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}' | sed 's/s$//')
     local ops=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
-    local latency=$(echo "$results" | grep 'avg:' | awk '{print $NF}')
+    local latency=$(echo "$results" | grep 'avg:' | awk '{print $NF}' | sed 's/ms$//')
     
     printf "+----------------------+----------------------+\n"
     printf "| ${CYAN}Métrique${NC}             | ${CYAN}Score${NC}                |\n"
     printf "+----------------------+----------------------+\n"
-    printf "| Temps d'exécution    | ${GREEN}%-20.2f${NC} |\n" "${time:-0} sec"
+    printf "| Temps d'exécution    | ${GREEN}%-20s${NC} |\n" "$(format_number "$time") sec"
     printf "| Opérations totales   | ${GREEN}%-20s${NC} |\n" "${ops:-0}"
-    printf "| Latence moyenne      | ${GREEN}%-20.2f${NC} |\n" "${latency:-0} ms"
+    printf "| Latence moyenne      | ${GREEN}%-20s${NC} |\n" "$(format_number "$latency") ms"
     printf "+----------------------+----------------------+\n"
 }
 
