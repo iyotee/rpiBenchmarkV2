@@ -247,22 +247,16 @@ get_network_info() {
     esac
 }
 
-# Fonction pour pousser les modifications vers GitHub
-push_to_github() {
-    local commit_message="$1"
-    if [ -z "$commit_message" ]; then
-        commit_message="Update: Résultats de benchmark $(date +%Y-%m-%d_%H-%M-%S)"
-    fi
-
-    if [ -d ".git" ]; then
-        echo -e "${BLUE}Envoi des modifications vers GitHub...${NC}"
-        git add .
-        git commit -m "$commit_message"
-        git push
-        echo -e "${GREEN}Modifications envoyées avec succès!${NC}"
-    else
-        echo -e "${YELLOW}Ce dossier n'est pas un dépôt Git.${NC}"
-    fi
+# Fonction pour obtenir le nombre de processeurs
+get_cpu_cores() {
+    case $PLATFORM in
+        "macos")
+            sysctl -n hw.ncpu
+            ;;
+        *)
+            nproc
+            ;;
+    esac
 }
 
 # Fonction pour le benchmark CPU
@@ -271,78 +265,70 @@ benchmark_cpu() {
     
     # Test single-thread
     log_result "${YELLOW}Test single-thread:${NC}"
-    local results=$(sysbench cpu --threads=1 run)
-    local min=$(grep 'min:' <<< "$results" | awk '{print $2}')
-    local avg=$(grep 'avg:' <<< "$results" | awk '{print $2}')
-    local max=$(grep 'max:' <<< "$results" | awk '{print $2}')
+    local results=$(sysbench --test=cpu --cpu-max-prime=20000 --num-threads=1 run)
+    local events=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
+    local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}')
+    local ops=$(echo "$results" | grep 'events per second:' | awk '{print $NF}')
     
     printf "+---------------------+----------------------+\n"
     printf "| ${CYAN}Métrique${NC}            | ${CYAN}Score${NC}                |\n"
     printf "+---------------------+----------------------+\n"
-    printf "| Temps minimum       | ${GREEN}%-20s${NC} |\n" "${min} secondes"
-    printf "| Temps moyen         | ${GREEN}%-20s${NC} |\n" "${avg} secondes"
-    printf "| Temps maximum       | ${GREEN}%-20s${NC} |\n" "${max} secondes"
+    printf "| Événements          | ${GREEN}%-20s${NC} |\n" "${events:-0}"
+    printf "| Temps total         | ${GREEN}%-20s${NC} |\n" "${time:-0} sec"
+    printf "| Opérations/sec      | ${GREEN}%-20s${NC} |\n" "${ops:-0}"
     printf "+---------------------+----------------------+\n"
     
     # Test multi-thread
     log_result "${YELLOW}Test multi-thread:${NC}"
-    local results=$(sysbench cpu --threads=$(nproc) run)
-    local min=$(grep 'min:' <<< "$results" | awk '{print $2}')
-    local avg=$(grep 'avg:' <<< "$results" | awk '{print $2}')
-    local max=$(grep 'max:' <<< "$results" | awk '{print $2}')
+    local cpu_cores=$(get_cpu_cores)
+    local results=$(sysbench --test=cpu --cpu-max-prime=20000 --num-threads=$cpu_cores run)
+    local events=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
+    local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}')
+    local ops=$(echo "$results" | grep 'events per second:' | awk '{print $NF}')
     
     printf "+---------------------+----------------------+\n"
     printf "| ${CYAN}Métrique${NC}            | ${CYAN}Score${NC}                |\n"
     printf "+---------------------+----------------------+\n"
-    printf "| Temps minimum       | ${GREEN}%-20s${NC} |\n" "${min} secondes"
-    printf "| Temps moyen         | ${GREEN}%-20s${NC} |\n" "${avg} secondes"
-    printf "| Temps maximum       | ${GREEN}%-20s${NC} |\n" "${max} secondes"
+    printf "| Événements          | ${GREEN}%-20s${NC} |\n" "${events:-0}"
+    printf "| Temps total         | ${GREEN}%-20s${NC} |\n" "${time:-0} sec"
+    printf "| Opérations/sec      | ${GREEN}%-20s${NC} |\n" "${ops:-0}"
     printf "+---------------------+----------------------+\n"
-    
-    # Pousser les résultats vers GitHub
-    push_to_github "Update: Résultats benchmark CPU"
 }
 
 # Fonction pour le benchmark threads
 benchmark_threads() {
     log_result "\n${BLUE}=== BENCHMARK THREADS ===${NC}"
     
-    local results=$(sysbench threads --threads=$(nproc) run)
-    local min=$(grep 'min:' <<< "$results" | awk '{print $2}')
-    local avg=$(grep 'avg:' <<< "$results" | awk '{print $2}')
-    local max=$(grep 'max:' <<< "$results" | awk '{print $2}')
+    local cpu_cores=$(get_cpu_cores)
+    local results=$(sysbench threads --threads=$cpu_cores run)
+    local min=$(echo "$results" | grep 'min:' | awk '{print $2}')
+    local avg=$(echo "$results" | grep 'avg:' | awk '{print $2}')
+    local max=$(echo "$results" | grep 'max:' | awk '{print $2}')
     
     printf "+---------------------+----------------------+\n"
     printf "| ${CYAN}Métrique${NC}            | ${CYAN}Score${NC}                |\n"
     printf "+---------------------+----------------------+\n"
-    printf "| Temps minimum       | ${GREEN}%-20s${NC} |\n" "${min} secondes"
-    printf "| Temps moyen         | ${GREEN}%-20s${NC} |\n" "${avg} secondes"
-    printf "| Temps maximum       | ${GREEN}%-20s${NC} |\n" "${max} secondes"
+    printf "| Temps minimum       | ${GREEN}%-20s${NC} |\n" "${min:-0} secondes"
+    printf "| Temps moyen         | ${GREEN}%-20s${NC} |\n" "${avg:-0} secondes"
+    printf "| Temps maximum       | ${GREEN}%-20s${NC} |\n" "${max:-0} secondes"
     printf "+---------------------+----------------------+\n"
-    
-    # Pousser les résultats vers GitHub
-    push_to_github "Update: Résultats benchmark threads"
 }
 
 # Fonction pour le benchmark mémoire
 benchmark_memory() {
     log_result "\n${BLUE}=== BENCHMARK MÉMOIRE ===${NC}"
     
-    local results=$(sysbench memory --threads=$(nproc) run)
-    local min=$(grep 'min:' <<< "$results" | awk '{print $2}')
-    local avg=$(grep 'avg:' <<< "$results" | awk '{print $2}')
-    local max=$(grep 'max:' <<< "$results" | awk '{print $2}')
+    local results=$(sysbench --test=memory --memory-block-size=1K --memory-total-size=10G --memory-access-mode=seq run)
+    local ops=$(echo "$results" | grep 'transferred' | awk '{print $(NF-1)}')
+    local speed=$(echo "$results" | grep 'transferred' | awk '{print $NF}' | sed 's/[^0-9.]//g')
+    local unit=$(echo "$results" | grep 'transferred' | awk '{print $NF}' | sed 's/[0-9.]//g')
     
     printf "+---------------------+----------------------+\n"
     printf "| ${CYAN}Métrique${NC}            | ${CYAN}Score${NC}                |\n"
     printf "+---------------------+----------------------+\n"
-    printf "| Temps minimum       | ${GREEN}%-20s${NC} |\n" "${min} secondes"
-    printf "| Temps moyen         | ${GREEN}%-20s${NC} |\n" "${avg} secondes"
-    printf "| Temps maximum       | ${GREEN}%-20s${NC} |\n" "${max} secondes"
+    printf "| Opérations          | ${GREEN}%-20s${NC} |\n" "${ops:-0}"
+    printf "| Vitesse             | ${GREEN}%-20s${NC} |\n" "${speed:-0} ${unit:-MB/sec}"
     printf "+---------------------+----------------------+\n"
-    
-    # Pousser les résultats vers GitHub
-    push_to_github "Update: Résultats benchmark mémoire"
 }
 
 # Fonction pour le benchmark disque
@@ -350,49 +336,57 @@ benchmark_disk() {
     log_result "\n${BLUE}=== BENCHMARK DISQUE ===${NC}"
     
     # Création d'un fichier temporaire pour les tests
-    local test_file="/tmp/disk_benchmark.tmp"
+    local test_dir="/tmp/disk_benchmark"
+    mkdir -p "$test_dir"
+    cd "$test_dir"
     
-    # Test d'écriture
-    log_result "${YELLOW}Test d'écriture:${NC}"
-    local write_speed=$(rm -f "$test_file" && sync && dd if=/dev/zero of="$test_file" bs=1M count=512 conv=fsync 2>&1 | grep -oP '\d+\.\d+' | tail -n 1)
+    # Test d'écriture séquentielle
+    log_result "${YELLOW}Test d'écriture séquentielle:${NC}"
+    local results=$(sysbench --test=fileio --file-total-size=2G --file-test-mode=seqwr prepare 2>/dev/null)
+    results=$(sysbench --test=fileio --file-total-size=2G --file-test-mode=seqwr run)
+    local write_speed=$(echo "$results" | grep 'written, MiB/s:' | awk '{print $NF}')
     
-    # Test de lecture
-    log_result "${YELLOW}Test de lecture:${NC}"
-    local read_speed=$(echo -e 3 > /proc/sys/vm/drop_caches && sync && dd if="$test_file" of=/dev/null bs=1M 2>&1 | grep -oP '\d+\.\d+' | tail -n 1)
+    # Test de lecture séquentielle
+    log_result "${YELLOW}Test de lecture séquentielle:${NC}"
+    results=$(sysbench --test=fileio --file-total-size=2G --file-test-mode=seqrd run)
+    local read_speed=$(echo "$results" | grep 'read, MiB/s:' | awk '{print $NF}')
     
     printf "+---------------------------+--------------------------------+\n"
     printf "| ${CYAN}Métrique${NC}                    | ${CYAN}Score${NC}                          |\n"
     printf "+---------------------------+--------------------------------+\n"
-    printf "| Vitesse d'écriture        | ${GREEN}%-26s${NC} |\n" "${write_speed} MB/s"
-    printf "| Vitesse de lecture        | ${GREEN}%-26s${NC} |\n" "${read_speed} MB/s"
+    printf "| Vitesse d'écriture        | ${GREEN}%-26s${NC} |\n" "${write_speed:-0} MB/s"
+    printf "| Vitesse de lecture        | ${GREEN}%-26s${NC} |\n" "${read_speed:-0} MB/s"
     printf "+---------------------------+--------------------------------+\n"
     
     # Nettoyage
-    rm -f "$test_file"
-    
-    # Pousser les résultats vers GitHub
-    push_to_github "Update: Résultats benchmark disque"
+    sysbench --test=fileio --file-total-size=2G cleanup >/dev/null 2>&1
+    cd - >/dev/null
+    rm -rf "$test_dir"
 }
 
 # Fonction pour le benchmark réseau
 benchmark_network() {
     log_result "\n${BLUE}=== BENCHMARK RÉSEAU ===${NC}"
     
-    local results=$(speedtest-cli --simple)
-    local download=$(grep 'Download' <<< "$results" | awk '{print $2}')
-    local upload=$(grep 'Upload' <<< "$results" | awk '{print $2}')
-    local ping=$(grep 'Ping' <<< "$results" | awk '{print $2}')
+    # Test de latence vers Google DNS
+    local ping_result=$(ping -c 5 8.8.8.8 2>/dev/null | tail -1 | awk '{print $4}' | cut -d '/' -f 2)
+    
+    # Test de débit avec curl
+    local download_speed=0
+    local upload_speed=0
+    
+    # Test de téléchargement (fichier test de 10MB depuis un CDN)
+    local dl_result=$(curl -s -w "%{speed_download}" -o /dev/null https://speed.hetzner.de/10MB.bin 2>/dev/null)
+    if [ -n "$dl_result" ]; then
+        download_speed=$(echo "scale=2; $dl_result / 131072" | bc) # Conversion en Mbps
+    fi
     
     printf "+----------------------+-------------------+\n"
     printf "| ${CYAN}Métrique${NC}            | ${CYAN}Score${NC}          |\n"
     printf "+----------------------+-------------------+\n"
-    printf "| Débit descendant     | ${GREEN}%-18s${NC} |\n" "${download} Mbps"
-    printf "| Débit montant        | ${GREEN}%-18s${NC} |\n" "${upload} Mbps"
-    printf "| Ping                 | ${GREEN}%-18s${NC} |\n" "${ping} ms"
+    printf "| Latence moyenne      | ${GREEN}%-15s${NC} |\n" "${ping_result:-0} ms"
+    printf "| Débit descendant     | ${GREEN}%-15s${NC} |\n" "${download_speed:-0} Mbps"
     printf "+----------------------+-------------------+\n"
-    
-    # Pousser les résultats vers GitHub
-    push_to_github "Update: Résultats benchmark réseau"
 }
 
 # Fonction pour le stress test et monitoring température
@@ -431,9 +425,6 @@ stress_test() {
     
     log_result "${GREEN}Stress test terminé${NC}"
     log_result "  Température finale: $(vcgencmd measure_temp)"
-    
-    # Pousser les résultats vers GitHub
-    push_to_github "Update: Résultats stress test"
 }
 
 # Fonction pour exécuter tous les benchmarks
