@@ -656,55 +656,6 @@ stress_test() {
     log_result "  Température finale: $(get_cpu_temp)"
 }
 
-# Fonction pour envoyer les résultats à Plotly
-send_to_plotly() {
-    local results_file="$RESULTS_DIR/benchmark_results_$(date +%Y%m%d_%H%M%S).json"
-    
-    # Créer un fichier JSON avec les résultats
-    cat > "$results_file" << EOF
-{
-    "date": "$(date +%Y-%m-%dT%H:%M:%S)",
-    "cpu_single_thread": {
-        "events": "$(echo "$results" | grep 'single-thread' -A 4 | grep 'Événements' | awk '{print $NF}')",
-        "ops_per_sec": "$(echo "$results" | grep 'single-thread' -A 4 | grep 'Opérations/sec' | awk '{print $NF}')"
-    },
-    "cpu_multi_thread": {
-        "events": "$(echo "$results" | grep 'multi-thread' -A 4 | grep 'Événements' | awk '{print $NF}')",
-        "ops_per_sec": "$(echo "$results" | grep 'multi-thread' -A 4 | grep 'Opérations/sec' | awk '{print $NF}')"
-    },
-    "memory": {
-        "transfer_speed": "$(echo "$results" | grep 'Vitesse de transfert' | awk '{print $NF}' | sed 's/MiB\/sec//')"
-    },
-    "disk": {
-        "write_speed": "$(echo "$results" | grep 'Vitesse d.écriture' | awk '{print $NF}' | sed 's/MB\/s//')",
-        "read_speed": "$(echo "$results" | grep 'Vitesse de lecture' | awk '{print $NF}' | sed 's/MB\/s//')"
-    },
-    "network": {
-        "download_speed": "$(echo "$results" | grep 'Débit descendant' | awk '{print $NF}' | sed 's/Mbps//')",
-        "ping": "$(echo "$results" | grep 'Latence moyenne' | awk '{print $NF}' | sed 's/ms//')"
-    }
-}
-EOF
-
-    # Envoyer les données à Plotly
-    if command -v curl &> /dev/null; then
-        local plotly_url=$(curl -s -X POST \
-            -H "Content-Type: application/json" \
-            -d @"$results_file" \
-            "https://api.plot.ly/v2/plots" \
-            | grep -o '"url":"[^"]*"' | cut -d'"' -f4)
-        
-        if [ -n "$plotly_url" ]; then
-            echo -e "${GREEN}Graphiques disponibles à l'adresse : ${plotly_url}${NC}"
-            echo "URL des graphiques : $plotly_url" >> "$LOG_FILE"
-        else
-            echo -e "${RED}Erreur lors de l'envoi des données à Plotly${NC}"
-        fi
-    else
-        echo -e "${RED}curl n'est pas installé. Impossible d'envoyer les données à Plotly.${NC}"
-    fi
-}
-
 # Fonction pour générer les graphiques avec Chart.js
 generate_charts() {
     local html_file="$RESULTS_DIR/benchmark_charts.html"
