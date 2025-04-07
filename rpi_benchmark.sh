@@ -66,10 +66,14 @@ install_packages() {
     # Définir les paquets en fonction de la plateforme
     case $PLATFORM in
         "macos")
-            packages=("sysbench" "stress-ng" "speedtest-cli")
+            packages=("sysbench" "stress-ng" "speedtest-cli" "bc" "python3" "sqlite3")
+            # Vérifier si osx-cpu-temp est nécessaire pour la température sous macOS
+            if ! command -v osx-cpu-temp &> /dev/null; then
+                packages+=("osx-cpu-temp")
+            fi
             ;;
         *)
-            packages=("sysbench" "stress-ng" "speedtest-cli" "bc" "dnsutils" "hdparm")
+            packages=("sysbench" "stress-ng" "speedtest-cli" "bc" "dnsutils" "hdparm" "python3" "python3-pip" "sqlite3" "dialog")
             ;;
     esac
 
@@ -83,22 +87,39 @@ install_packages() {
     # Vérifier les dépendances manquantes
     for package in "${packages[@]}"; do
         if ! command -v "$package" &> /dev/null; then
-            missing_deps+=("$package")
+            # Exception pour les packages qui ne fournissent pas de commande exécutable
+            if [[ "$package" == "python3-pip" || "$package" == "dnsutils" || "$package" == "dialog" || "$package" == "sqlite3" ]]; then
+                case $PLATFORM in
+                    "macos")
+                        if [[ "$package" == "sqlite3" ]] && ! command -v sqlite3 &> /dev/null; then
+                            missing_deps+=("$package")
+                        fi
+                        ;;
+                    *)
+                        # Pour Linux, nous ajoutons simplement ces packages
+                        missing_deps+=("$package")
+                        ;;
+                esac
+            else
+                missing_deps+=("$package")
+            fi
         fi
     done
 
     # Installer les dépendances manquantes
     if [ ${#missing_deps[@]} -ne 0 ]; then
-        echo -e "${YELLOW}Installation des paquets requis...${NC}"
+        echo -e "${YELLOW}Installation des paquets requis: ${missing_deps[*]}...${NC}"
         case $PLATFORM in
             "macos")
                 for package in "${missing_deps[@]}"; do
+                    echo -e "${YELLOW}Installation de $package...${NC}"
                     brew install "$package" || display_error "Échec de l'installation de $package"
                 done
                 ;;
             "raspbian"|"ubuntu")
                 apt-get update
                 for package in "${missing_deps[@]}"; do
+                    echo -e "${YELLOW}Installation de $package...${NC}"
                     apt-get install -y "$package" || display_error "Échec de l'installation de $package"
                 done
                 ;;
@@ -106,6 +127,7 @@ install_packages() {
                 display_error "Plateforme non supportée: $PLATFORM"
                 ;;
         esac
+        echo -e "${GREEN}Installation des paquets terminée.${NC}"
     fi
 }
 
@@ -1136,7 +1158,7 @@ run_all_benchmarks() {
     echo -e "${GREEN}Tous les benchmarks terminés et résultats exportés en CSV${NC}"
 }
 
-# Fonction pour afficher le menu
+# Fonction pour afficher le menu en mode CLI
 show_menu() {
     while true; do
         clear
@@ -1150,7 +1172,10 @@ show_menu() {
         echo -e "6. Benchmark Disque"
         echo -e "7. Benchmark Réseau"
         echo -e "8. Stress Test"
-        echo -e "9. Quitter"
+        echo -e "9. Exporter les résultats (CSV et JSON)"
+        echo -e "10. Interface web"
+        echo -e "11. Planifier les benchmarks"
+        echo -e "12. Quitter"
         echo -e "\nVotre choix: "
         
         read -r choice
@@ -1166,8 +1191,65 @@ show_menu() {
             6) benchmark_disk ;;
             7) benchmark_network ;;
             8) stress_test ;;
-            9) exit 0 ;;
+            9)
+                export_csv
+                export_json
+                ;;
+            10) start_web_interface ;;
+            11) schedule_benchmark ;;
+            12) exit 0 ;;
             *) echo -e "${RED}Choix invalide${NC}" ;;
+        esac
+        
+        echo -e "\nAppuyez sur Entrée pour continuer..."
+        read -r
+    done
+}
+
+# Fonction pour afficher le menu avec dialog
+show_dialog_menu() {
+    while true; do
+        choice=$(dialog --clear \
+            --backtitle "RPi Benchmark v2.0" \
+            --title "Menu Principal" \
+            --menu "Choisissez une option:" \
+            15 50 8 \
+            1 "Informations système" \
+            2 "Exécuter tous les benchmarks" \
+            3 "Benchmark CPU" \
+            4 "Benchmark Threads" \
+            5 "Benchmark Mémoire" \
+            6 "Benchmark Disque" \
+            7 "Benchmark Réseau" \
+            8 "Stress Test" \
+            9 "Exporter les résultats" \
+            10 "Interface web" \
+            11 "Planifier les benchmarks" \
+            12 "Quitter" \
+            2>&1 >/dev/tty)
+            
+        case $choice in
+            1)
+                clear
+                get_hardware_info
+                get_network_info
+                ;;
+            2) clear; run_all_benchmarks ;;
+            3) clear; benchmark_cpu ;;
+            4) clear; benchmark_threads ;;
+            5) clear; benchmark_memory ;;
+            6) clear; benchmark_disk ;;
+            7) clear; benchmark_network ;;
+            8) clear; stress_test ;;
+            9)
+                clear
+                export_csv
+                export_json
+                ;;
+            10) clear; start_web_interface ;;
+            11) clear; schedule_benchmark ;;
+            12) clear; exit 0 ;;
+            *) continue ;; # En cas d'annulation, retour au menu
         esac
         
         echo -e "\nAppuyez sur Entrée pour continuer..."
@@ -1504,55 +1586,22 @@ schedule_benchmark() {
         *) echo -e "${RED}Choix invalide${NC}" ; return ;;
     esac
     
+    # Vérifier si crontab est disponible
+    if ! command -v crontab &> /dev/null; then
+        case $PLATFORM in
+            "macos") 
+                echo -e "${YELLOW}crontab est normalement disponible sur macOS.${NC}"
+                ;;
+            *) 
+                echo -e "${YELLOW}Installation de cron...${NC}"
+                apt-get update && apt-get install -y cron
+                systemctl enable cron
+                ;;
+        esac
+    fi
+    
     (crontab -l 2>/dev/null; echo "$cron_schedule $(pwd)/rpi_benchmark.sh --cron") | crontab -
     echo -e "${GREEN}Benchmark planifié avec succès${NC}"
-}
-
-# Fonction pour afficher le menu principal avec dialog
-show_dialog_menu() {
-    while true; do
-        choice=$(dialog --clear \
-            --backtitle "RPi Benchmark v2.0" \
-            --title "Menu Principal" \
-            --menu "Choisissez une option:" \
-            15 50 8 \
-            1 "Informations système" \
-            2 "Exécuter tous les benchmarks" \
-            3 "Benchmark CPU" \
-            4 "Benchmark Threads" \
-            5 "Benchmark Mémoire" \
-            6 "Benchmark Disque" \
-            7 "Benchmark Réseau" \
-            8 "Stress Test" \
-            9 "Exporter les résultats" \
-            10 "Interface web" \
-            11 "Planifier les benchmarks" \
-            12 "Quitter" \
-            2>&1 >/dev/tty)
-            
-        case $choice in
-            1)
-                get_hardware_info
-                get_network_info
-                ;;
-            2) run_all_benchmarks ;;
-            3) benchmark_cpu ;;
-            4) benchmark_threads ;;
-            5) benchmark_memory ;;
-            6) benchmark_disk ;;
-            7) benchmark_network ;;
-            8) stress_test ;;
-            9)
-                export_csv
-                export_json
-                ;;
-            10) start_web_interface ;;
-            11) schedule_benchmark ;;
-            12) exit 0 ;;
-        esac
-        
-        read -p "Appuyez sur Entrée pour continuer..."
-    done
 }
 
 # Fonction principale
@@ -1566,6 +1615,9 @@ main() {
     if [[ "$PLATFORM" == "macos" ]] && [[ $EUID -eq 0 ]]; then
         display_error "Sur macOS, n'utilisez pas sudo pour exécuter ce script."
     fi
+    
+    # Créer le répertoire des résultats s'il n'existe pas
+    mkdir -p "$RESULTS_DIR"
     
     # Installation des paquets requis
     install_packages
