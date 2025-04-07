@@ -92,7 +92,7 @@ install_packages() {
                 case $PLATFORM in
                     "macos")
                         if [[ "$package" == "sqlite3" ]] && ! command -v sqlite3 &> /dev/null; then
-                            missing_deps+=("$package")
+            missing_deps+=("$package")
                         fi
                         ;;
                     *)
@@ -419,11 +419,11 @@ benchmark_cpu() {
             ;;
         *)
             # Test standard pour Linux
-            local results=$(sysbench cpu --cpu-max-prime=20000 --threads=1 run 2>/dev/null)
-            local events=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
-            local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}' | sed 's/s$//')
-            local ops=$(echo "$results" | grep 'events per second:' | awk '{print $NF}')
-            
+    local results=$(sysbench cpu --cpu-max-prime=20000 --threads=1 run 2>/dev/null)
+    local events=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
+    local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}' | sed 's/s$//')
+    local ops=$(echo "$results" | grep 'events per second:' | awk '{print $NF}')
+    
             # Formatage pour assurer un alignement parfait - Traitement explicite
             local events_value=$(printf "%d" "${events:-0}")
             local time_value=$(printf "%.2f sec" "$(format_number "$time")")
@@ -495,11 +495,11 @@ benchmark_memory() {
             ;;
         *)
             # Test standard pour Linux
-            local results=$(sysbench memory --memory-block-size=1K --memory-total-size=10G --memory-access-mode=seq run 2>/dev/null)
+    local results=$(sysbench memory --memory-block-size=1K --memory-total-size=10G --memory-access-mode=seq run 2>/dev/null)
             local total_ops=$(echo "$results" | grep 'Total operations:' | awk '{print $NF}' | sed 's/[^0-9]//g')
-            local total_transferred=$(echo "$results" | grep 'Total transferred' | awk '{print $3}')
-            local transfer_speed=$(echo "$results" | grep 'transferred' | grep -o '[0-9.]\+ MiB/sec' | awk '{print $1}')
-            
+    local total_transferred=$(echo "$results" | grep 'Total transferred' | awk '{print $3}')
+    local transfer_speed=$(echo "$results" | grep 'transferred' | grep -o '[0-9.]\+ MiB/sec' | awk '{print $1}')
+    
             # Préparer les données pour le tableau
             local metrics=(
                 "Opérations totales:$(printf "%d" "$total_ops")"
@@ -575,25 +575,25 @@ benchmark_disk() {
             ;;
         *)
             # Test standard pour Linux
-            local test_dir="/tmp/disk_benchmark"
-            mkdir -p "$test_dir"
-            cd "$test_dir"
-            
+    local test_dir="/tmp/disk_benchmark"
+    mkdir -p "$test_dir"
+    cd "$test_dir"
+    
             # Obtenir les informations sur l'espace disque
             local df_output=$(df -h / | awk 'NR==2 {print $2,$3,$4}')
             local total_size=$(echo "$df_output" | awk '{print $1}')
             local used_space=$(echo "$df_output" | awk '{print $2}')
             local free_space=$(echo "$df_output" | awk '{print $3}')
             
-            sysbench fileio --file-total-size=2G prepare >/dev/null 2>&1
-            local results=$(sysbench fileio --file-total-size=2G --file-test-mode=seqwr run 2>/dev/null)
-            local write_speed=$(echo "$results" | grep 'written, MiB/s:' | awk '{print $NF}')
-            local write_iops=$(echo "$results" | grep 'writes/s:' | awk '{print $NF}')
-            
+    sysbench fileio --file-total-size=2G prepare >/dev/null 2>&1
+    local results=$(sysbench fileio --file-total-size=2G --file-test-mode=seqwr run 2>/dev/null)
+    local write_speed=$(echo "$results" | grep 'written, MiB/s:' | awk '{print $NF}')
+    local write_iops=$(echo "$results" | grep 'writes/s:' | awk '{print $NF}')
+    
             results=$(sysbench fileio --file-total-size=2G --file-test-mode=seqrd run 2>/dev/null)
-            local read_speed=$(echo "$results" | grep 'read, MiB/s:' | awk '{print $NF}')
-            local read_iops=$(echo "$results" | grep 'reads/s:' | awk '{print $NF}')
-            
+    local read_speed=$(echo "$results" | grep 'read, MiB/s:' | awk '{print $NF}')
+    local read_iops=$(echo "$results" | grep 'reads/s:' | awk '{print $NF}')
+    
             # Préparer les données pour le tableau avec les unités
             local metrics=(
                 "Taille totale:$(printf "%s" "$total_size")"
@@ -606,11 +606,11 @@ benchmark_disk() {
             )
             
             format_table "Résultats Disque" "${metrics[@]}"
-            
-            # Nettoyage
-            sysbench fileio cleanup >/dev/null 2>&1
-            cd - >/dev/null
-            rm -rf "$test_dir"
+    
+    # Nettoyage
+    sysbench fileio cleanup >/dev/null 2>&1
+    cd - >/dev/null
+    rm -rf "$test_dir"
             ;;
     esac
 }
@@ -640,9 +640,9 @@ benchmark_network() {
             fi
             
             # Test de débit
-            local download_speed=0
-            local upload_speed=0
-            
+    local download_speed=0
+    local upload_speed=0
+    
             if command -v networkQuality &> /dev/null; then
                 local result=$(networkQuality -v)
                 download_speed=$(echo "$result" | grep "Download capacity" | awk '{print $3}')
