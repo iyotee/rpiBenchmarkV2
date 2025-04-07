@@ -1258,14 +1258,40 @@ rotate_logs() {
 
 # Fonction pour lancer le serveur web
 start_web_interface() {
-    if ! command -v python3 &> /dev/null; then
-        apt-get install -y python3 python3-flask
+    echo -e "${YELLOW}Configuration de l'environnement web...${NC}"
+    
+    # Créer un environnement virtuel Python
+    if [ "$PLATFORM" = "macos" ]; then
+        # Vérifier si l'environnement virtuel existe déjà
+        if [ ! -d "$RESULTS_DIR/venv" ]; then
+            echo -e "${YELLOW}Création d'un environnement virtuel Python...${NC}"
+            python3 -m venv "$RESULTS_DIR/venv"
+            # Activer l'environnement virtuel et installer Flask
+            source "$RESULTS_DIR/venv/bin/activate"
+            pip install flask
+            echo -e "${GREEN}Flask installé avec succès dans l'environnement virtuel.${NC}"
+        else
+            echo -e "${GREEN}Utilisation de l'environnement virtuel existant.${NC}"
+            source "$RESULTS_DIR/venv/bin/activate"
+        fi
+    else
+        # Pour Linux/Raspberry Pi, installer Flask directement
+        if ! command -v python3 &> /dev/null; then
+            apt-get install -y python3 python3-pip
+        fi
+        
+        if ! python3 -c "import flask" &> /dev/null; then
+            echo -e "${YELLOW}Installation de Flask...${NC}"
+            pip3 install flask
+        fi
     fi
     
+    # Créer le script du serveur web
     cat > "$RESULTS_DIR/web_server.py" << 'EOF'
 from flask import Flask, render_template, jsonify
 import sqlite3
 import os
+import sys
 
 app = Flask(__name__)
 
@@ -1275,17 +1301,22 @@ def index():
 
 @app.route('/data')
 def get_data():
-    conn = sqlite3.connect('benchmark_history.db')
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM benchmarks ORDER BY date DESC LIMIT 10")
-    data = cursor.fetchall()
-    conn.close()
-    return jsonify(data)
+    try:
+        db_path = os.path.join(os.path.dirname(__file__), 'benchmark_history.db')
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM benchmarks ORDER BY date DESC LIMIT 10")
+        data = cursor.fetchall()
+        conn.close()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
 EOF
 
+    # Créer le dossier templates et le fichier HTML
     mkdir -p "$RESULTS_DIR/templates"
     cat > "$RESULTS_DIR/templates/index.html" << 'EOF'
 <!DOCTYPE html>
@@ -1293,32 +1324,166 @@ EOF
 <head>
     <title>RPi Benchmark Results</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .chart-container {
+            width: 80%;
+            margin: 30px auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+    </style>
 </head>
 <body>
     <h1>RPi Benchmark Results</h1>
-    <canvas id="resultsChart"></canvas>
+    <div class="chart-container">
+        <canvas id="cpuChart"></canvas>
+    </div>
+    <div class="chart-container">
+        <canvas id="diskChart"></canvas>
+    </div>
+    <div class="chart-container">
+        <canvas id="networkChart"></canvas>
+    </div>
+    
     <script>
         fetch('/data')
             .then(response => response.json())
             .then(data => {
-                new Chart(document.getElementById('resultsChart'), {
+                if (data.error) {
+                    console.error('Error:', data.error);
+                    return;
+                }
+                
+                // Formater les dates pour l'affichage
+                const labels = data.map(row => {
+                    const date = new Date(row[1]);
+                    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                });
+                
+                // Données CPU
+                new Chart(document.getElementById('cpuChart'), {
                     type: 'line',
                     data: {
-                        labels: data.map(row => row[1]),
-                        datasets: [{
-                            label: 'CPU Performance',
-                            data: data.map(row => row[3])
-                        }]
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'CPU Single Thread',
+                                data: data.map(row => row[3]),
+                                borderColor: 'rgba(255, 99, 132, 1)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                fill: false
+                            },
+                            {
+                                label: 'CPU Multi Thread',
+                                data: data.map(row => row[6]),
+                                borderColor: 'rgba(54, 162, 235, 1)',
+                                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                                fill: false
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        title: {
+                            display: true,
+                            text: 'Performance CPU'
+                        }
                     }
                 });
+                
+                // Données Disque
+                new Chart(document.getElementById('diskChart'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Vitesse d\'écriture (MB/s)',
+                                data: data.map(row => row[11]),
+                                borderColor: 'rgba(255, 159, 64, 1)',
+                                backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                                fill: false
+                            },
+                            {
+                                label: 'Vitesse de lecture (MB/s)',
+                                data: data.map(row => row[12]),
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                fill: false
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        title: {
+                            display: true,
+                            text: 'Performance Disque'
+                        }
+                    }
+                });
+                
+                // Données Réseau
+                new Chart(document.getElementById('networkChart'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Débit descendant (Mbps)',
+                                data: data.map(row => row[13]),
+                                borderColor: 'rgba(153, 102, 255, 1)',
+                                backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                                fill: false
+                            },
+                            {
+                                label: 'Ping (ms)',
+                                data: data.map(row => row[15]),
+                                borderColor: 'rgba(255, 206, 86, 1)',
+                                backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                                fill: false
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        title: {
+                            display: true,
+                            text: 'Performance Réseau'
+                        }
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching data:', error);
             });
     </script>
 </body>
 </html>
 EOF
 
-    cd "$RESULTS_DIR" && python3 web_server.py &
+    # Démarrer le serveur web
+    if [ "$PLATFORM" = "macos" ]; then
+        echo -e "${GREEN}Démarrage du serveur web avec l'environnement virtuel...${NC}"
+        cd "$RESULTS_DIR" && "$RESULTS_DIR/venv/bin/python" web_server.py &
+    else
+        cd "$RESULTS_DIR" && python3 web_server.py &
+    fi
+    
     echo -e "${GREEN}Interface web démarrée sur http://localhost:8080${NC}"
+    echo -e "${YELLOW}Ouvrez cette URL dans votre navigateur pour voir les résultats.${NC}"
+    echo -e "${YELLOW}Appuyez sur Ctrl+C pour arrêter le serveur lorsque vous avez terminé.${NC}"
 }
 
 # Fonction pour planifier les benchmarks
