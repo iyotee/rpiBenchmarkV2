@@ -1208,7 +1208,13 @@ show_menu() {
 
 # Fonction pour afficher le menu en mode Dialog
 show_dialog_menu() {
-    if command -v dialog &> /dev/null; then
+    # Vérifier que dialog est installé et que nous sommes dans un terminal interactif
+    if command -v dialog &> /dev/null && [ -t 0 ] && [ -t 1 ] && [ -t 2 ]; then
+        # Utiliser dialog pour un affichage plus convivial
+        clear
+        echo -e "${GREEN}Lancement de l'interface dialog...${NC}"
+        sleep 1
+        
         while true; do
             choice=$(dialog --clear \
                 --backtitle "RPi Benchmark v2.0" \
@@ -1256,7 +1262,15 @@ show_dialog_menu() {
             read -r
         done
     else
-        # Interface améliorée si dialog n'est pas disponible
+        # Message d'avertissement si dialog n'est pas disponible ou si nous ne sommes pas dans un terminal interactif
+        if ! command -v dialog &> /dev/null; then
+            echo -e "${YELLOW}Le package 'dialog' n'est pas installé. Utilisation de l'interface alternative.${NC}"
+        elif ! [ -t 0 ] || ! [ -t 1 ] || ! [ -t 2 ]; then
+            echo -e "${YELLOW}L'interface dialog nécessite un terminal interactif.${NC}"
+            echo -e "${YELLOW}Utilisez './rpi_benchmark.sh' sans pipe ni redirection pour dialog.${NC}"
+        fi
+        
+        # Interface améliorée si dialog n'est pas disponible ou ne peut pas être utilisé
         show_enhanced_menu
     fi
 }
@@ -1476,6 +1490,13 @@ main() {
             echo -e "${YELLOW}Le package 'dialog' n'est pas installé. Installation en cours...${NC}"
             install_package "dialog"
         fi
+        
+        if ! [ -t 0 ] || ! [ -t 1 ] || ! [ -t 2 ]; then
+            echo -e "${RED}Erreur: L'option --dialog nécessite un terminal interactif.${NC}"
+            echo -e "${YELLOW}Utilisez './rpi_benchmark.sh --dialog' sans pipe ni redirection.${NC}"
+            exit 1
+        fi
+        
         show_dialog_menu
     else
         show_menu
