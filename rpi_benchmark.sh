@@ -7,14 +7,38 @@
 # Arrêt en cas d'erreur
 set -e
 
-# Couleurs pour l'affichage
+# Couleurs pour l'affichage amélioré
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+ORANGE='\033[38;5;208m'
+LIME='\033[38;5;119m'
+MAGENTA='\033[38;5;201m'
+TEAL='\033[38;5;6m'
+GRAY='\033[38;5;245m'
 NC='\033[0m' # No Color
+
+# Arrière-plans
+BG_BLUE='\033[44m'
+BG_RED='\033[41m'
+BG_GREEN='\033[42m'
+BG_YELLOW='\033[43m'
+BG_MAGENTA='\033[45m'
+BG_CYAN='\033[46m'
+BG_GRAY='\033[48;5;240m'
+BG_DARK='\033[48;5;235m'
+BG_BLACK='\033[40m'
+
+# Styles
+BOLD='\033[1m'
+UNDERLINE='\033[4m'
+BLINK='\033[5m'
+INVERSE='\033[7m'
+DIM='\033[2m'
 
 # Variables globales
 RESULTS_DIR="benchmark_results"
@@ -22,6 +46,26 @@ LOG_FILE="${RESULTS_DIR}/benchmark_results_$(date +%Y%m%d_%H%M%S).log"
 TEMP_THRESHOLD=70 # Seuil de température critique en degrés Celsius
 HISTORY_DB="$RESULTS_DIR/benchmark_history.db"
 MAX_LOGS=10 # Nombre maximum de fichiers de log à conserver
+
+# Symboles Unicode pour l'interface moderne
+SYMBOL_RIGHT_ARROW="▶"
+SYMBOL_LEFT_ARROW="◀"
+SYMBOL_DIAMOND="◆"
+SYMBOL_CIRCLE="●"
+SYMBOL_SQUARE="■"
+SYMBOL_CHECK="✓"
+SYMBOL_CROSS="✗"
+SYMBOL_WARNING="⚠"
+SYMBOL_INFO="ℹ"
+SYMBOL_STAR="★"
+SYMBOL_BOLT="⚡"
+SYMBOL_CLOCK="⏱"
+SYMBOL_CPU="🖥️"
+SYMBOL_RAM="🧠"
+SYMBOL_DISK="💾"
+SYMBOL_NETWORK="🌐"
+SYMBOL_TEMP="🌡️"
+SYMBOL_CHART="📊"
 
 # Détection de la plateforme
 PLATFORM="unknown"
@@ -43,29 +87,33 @@ if [[ "$PLATFORM" == "unknown" ]] && command -v vcgencmd &> /dev/null; then
     PLATFORM="raspbian"
 fi
 
-# Fonction pour afficher une erreur et quitter
+# Fonction pour afficher une erreur et quitter avec style moderne
 display_error() {
-    echo -e "${RED}Erreur: $1${NC}"
-    echo -e "${YELLOW}Informations de diagnostic:${NC}"
-    echo -e "  Plateforme détectée: $PLATFORM"
-    echo -e "  Système d'exploitation: $(uname -a)"
+    echo ""
+    echo -e "${BG_RED}${WHITE}${BOLD} ERREUR ${NC} ${RED}${BOLD}$1${NC}"
+    echo ""
+    echo -e "${BG_YELLOW}${BLACK} DIAGNOSTIC ${NC} ${YELLOW}Informations système:${NC}"
+    echo -e "  ${SYMBOL_INFO} Plateforme détectée: ${BOLD}$PLATFORM${NC}"
+    echo -e "  ${SYMBOL_INFO} Système d'exploitation: ${BOLD}$(uname -a)${NC}"
     
     if [[ -f /etc/os-release ]]; then
-        echo -e "  Contenu de /etc/os-release:"
-        cat /etc/os-release
+        echo -e "  ${SYMBOL_INFO} Contenu de /etc/os-release:"
+        cat /etc/os-release | sed 's/^/    /'
     fi
     
     if [[ -f /proc/cpuinfo ]]; then
-        echo -e "  Modèle CPU:"
-        grep "model name\|Model" /proc/cpuinfo | head -n1
+        echo -e "  ${SYMBOL_INFO} Modèle CPU:"
+        grep "model name\|Model" /proc/cpuinfo | head -n1 | sed 's/^/    /'
     fi
     
     exit 1
 }
 
-# Fonction pour installer un paquet
+# Fonction pour installer un paquet avec retour visuel
 install_package() {
     local package=$1
+    
+    echo -e "${GRAY}┌─ ${YELLOW}Installation${NC} ${GRAY}──${NC} $package ${GRAY}$(printf '─%.0s' $(seq 1 50))${NC}"
     
     case $PLATFORM in
         "macos")
@@ -78,6 +126,255 @@ install_package() {
             display_error "Plateforme non supportée: $PLATFORM"
             ;;
     esac
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GRAY}└─ ${GREEN}${SYMBOL_CHECK} Terminé${NC}"
+    else
+        echo -e "${GRAY}└─ ${RED}${SYMBOL_CROSS} Échec${NC}"
+    fi
+}
+
+# Fonction pour une barre de progression
+show_progress() {
+    local percent=$1
+    local width=50
+    local completed=$((percent * width / 100))
+    local remaining=$((width - completed))
+    
+    printf "${GRAY}[${LIME}"
+    printf "%${completed}s" | tr ' ' '■'
+    printf "${GRAY}"
+    printf "%${remaining}s" | tr ' ' '□'
+    printf "${GRAY}] ${WHITE}%3d%%${NC}\r" $percent
+}
+
+# Affichage moderne d'un en-tête
+modern_header() {
+    local title=$1
+    local color=$2
+    local symbol=$3
+    local width=70
+    
+    echo ""
+    echo -e "${color}${BOLD}┏━━━ $symbol ${title} $(printf '━%.0s' $(seq 1 $((width - ${#title} - 7))))┓${NC}"
+    echo -e "${color}${BOLD}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+}
+
+# Fonction pour afficher l'en-tête principal
+show_header() {
+    clear
+    echo ""
+    echo -e "${BLUE}${BOLD}╔═════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}${BOLD}║                                                                 ║${NC}"
+    echo -e "${BLUE}${BOLD}║  ${BG_BLUE}${WHITE}${BOLD}  RPi BENCHMARK v2.0 - ANALYSE COMPLÈTE DES PERFORMANCES  ${NC}${BLUE}${BOLD}  ║${NC}"
+    echo -e "${BLUE}${BOLD}║                                                                 ║${NC}"
+    echo -e "${BLUE}${BOLD}╚═════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "  ${YELLOW}${SYMBOL_CLOCK} ${WHITE}Date:${NC} $(date '+%d %B %Y - %H:%M:%S')"
+    echo -e "  ${YELLOW}${SYMBOL_INFO} ${WHITE}Journal:${NC} $LOG_FILE"
+    echo ""
+    echo -e "${GRAY}$(printf '─%.0s' $(seq 1 75))${NC}"
+    echo ""
+}
+
+# Fonction pour logger les résultats avec style moderne
+log_result() {
+    local message="$1"
+    
+    # Afficher le message à l'écran
+    echo -e "$message"
+    
+    # Vérifier que le répertoire de résultats existe
+    if [ ! -d "$RESULTS_DIR" ]; then
+        mkdir -p "$RESULTS_DIR" 2>/dev/null || {
+            echo -e "${RED}${SYMBOL_CROSS} Impossible de créer le répertoire $RESULTS_DIR${NC}"
+            return 0
+        }
+    fi
+    
+    # Tenter d'écrire dans le fichier journal, mais continuer en cas d'échec
+    echo -e "$message" >> "$LOG_FILE" 2>/dev/null || {
+        echo -e "${RED}${SYMBOL_CROSS} Erreur lors de l'écriture dans le fichier journal: $LOG_FILE${NC}" >&2
+        return 0  # Retourner avec succès pour continuer l'exécution
+    }
+}
+
+# Formater les tableaux de façon moderne
+format_table() {
+    local title=$1
+    shift
+    local metrics=("$@")
+    
+    # Définir les largeurs fixes
+    local name_width=35
+    local value_width=40
+    
+    # Couleurs pour le tableau moderne
+    local header_bg=$BG_DARK
+    local header_fg=$WHITE
+    local row_color=$CYAN
+    local alt_row_color=$BLUE
+    local line_color=$GRAY
+    local text_color=$WHITE
+    local value_color=$LIME
+    
+    # Symboles pour les bordures modernes
+    local top_left="╭"
+    local top_right="╮"
+    local bottom_left="╰"
+    local bottom_right="╯"
+    local horizontal="─"
+    local vertical="│"
+    local left_t="├"
+    local right_t="┤"
+    local cross="┼"
+    local top_t="┬"
+    local bottom_t="┴"
+    
+    # Calculer la largeur totale
+    local total_width=$((name_width + value_width + 3))
+    
+    # Enregistrer les métriques dans le journal, mais pas dans la sortie standard
+    {
+        echo -e "\n# Données pour $title"
+        for metric in "${metrics[@]}"; do
+            local name=$(echo "$metric" | cut -d':' -f1)
+            local value=$(echo "$metric" | cut -d':' -f2-)
+            # Supprimer les espaces en début et fin de la valeur
+            value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            echo "$name: $value"
+        done
+    } >> "$LOG_FILE" 2>/dev/null
+    
+    # Afficher le titre du tableau
+    echo ""
+    echo -e "${BOLD}${BLUE}${title}${NC}"
+    
+    # Ligne supérieure
+    echo -ne "${line_color}${top_left}"
+    printf "%s" $(printf "%${total_width}s" | tr " " "$horizontal")
+    echo -e "${right_t}${NC}"
+    
+    # Ligne d'en-tête
+    echo -ne "${line_color}${vertical}${NC}${header_bg}${header_fg}${BOLD}"
+    printf " %-${name_width}s │ %${value_width}s " "MÉTRIQUE" "VALEUR"
+    echo -e "${NC}${line_color}${vertical}${NC}"
+    
+    # Ligne de séparation
+    echo -ne "${line_color}${left_t}"
+    printf "%s" $(printf "%${name_width}s" | tr " " "$horizontal")
+    echo -ne "${cross}"
+    printf "%s" $(printf "%${value_width}s" | tr " " "$horizontal")
+    echo -e "${right_t}${NC}"
+    
+    # Corps du tableau avec alternance de couleurs
+    local i=0
+    for metric in "${metrics[@]}"; do
+        local name=$(echo "$metric" | cut -d':' -f1)
+        local value=$(echo "$metric" | cut -d':' -f2-)
+        # Supprimer les espaces en début et fin de la valeur
+        value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        
+        if [ $((i % 2)) -eq 0 ]; then
+            background_color=""
+        else
+            background_color=""
+        fi
+        
+        echo -ne "${line_color}${vertical}${NC}${background_color}"
+        printf " ${text_color}%-${name_width}s${NC}${background_color} ${line_color}${vertical}${NC}${background_color} ${value_color}%${value_width}s ${NC}${line_color}${vertical}${NC}\n" "$name" "$value"
+        
+        i=$((i + 1))
+    done
+    
+    # Ligne inférieure
+    echo -ne "${line_color}${bottom_left}"
+    printf "%s" $(printf "%${total_width}s" | tr " " "$horizontal")
+    echo -e "${bottom_right}${NC}"
+}
+
+# Fonction pour obtenir la température CPU avec style moderne
+get_cpu_temp() {
+    case $PLATFORM in
+        "macos")
+            if command -v osx-cpu-temp &> /dev/null; then
+                osx-cpu-temp | sed 's/°C//'
+            else
+                echo "N/A"
+            fi
+            ;;
+        "raspbian")
+            if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+                awk '{printf "%.1f°C", $1/1000}' /sys/class/thermal/thermal_zone0/temp
+            else
+                echo "N/A"
+            fi
+            ;;
+        *)
+            if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+                awk '{printf "%.1f°C", $1/1000}' /sys/class/thermal/thermal_zone0/temp
+            else
+                echo "N/A"
+            fi
+            ;;
+    esac
+}
+
+# Fonction pour obtenir les informations hardware avec présentation moderne
+get_hardware_info() {
+    modern_header "INFORMATIONS HARDWARE" $CYAN $SYMBOL_INFO
+    
+    # Informations CPU
+    echo -e "  ${CYAN}${SYMBOL_CPU} ${BOLD}${WHITE}CPU:${NC}"
+    case $PLATFORM in
+        "macos")
+            echo -e "    ${YELLOW}⬥${NC} ${WHITE}Modèle:${NC} $(sysctl -n machdep.cpu.brand_string)"
+            echo -e "    ${YELLOW}⬥${NC} ${WHITE}Architecture:${NC} $(uname -m)"
+            echo -e "    ${YELLOW}⬥${NC} ${WHITE}Cœurs:${NC} $(sysctl -n hw.ncpu)"
+            ;;
+        "raspbian")
+            echo -e "    ${YELLOW}⬥${NC} ${WHITE}Modèle:${NC} $(cat /proc/cpuinfo | grep "Model" | head -n1 | cut -d: -f2 | sed 's/^[ \t]*//')"
+            echo -e "    ${YELLOW}⬥${NC} ${WHITE}Architecture:${NC} $(uname -m)"
+            echo -e "    ${YELLOW}⬥${NC} ${WHITE}Cœurs:${NC} $(nproc)"
+            if command -v vcgencmd &> /dev/null; then
+                echo -e "    ${YELLOW}⬥${NC} ${WHITE}Fréquence:${NC} $(vcgencmd measure_clock arm | awk -F'=' '{printf "%.0f MHz\n", $2/1000000}')"
+                echo -e "    ${YELLOW}⬥${NC} ${WHITE}Voltage:${NC} $(vcgencmd measure_volts core | cut -d'=' -f2)"
+            fi
+            ;;
+        *)
+            echo -e "    ${YELLOW}⬥${NC} ${WHITE}Modèle:${NC} $(cat /proc/cpuinfo | grep "model name" | head -n1 | cut -d: -f2 | sed 's/^[ \t]*//')"
+            echo -e "    ${YELLOW}⬥${NC} ${WHITE}Architecture:${NC} $(uname -m)"
+            echo -e "    ${YELLOW}⬥${NC} ${WHITE}Cœurs:${NC} $(nproc)"
+            ;;
+    esac
+    
+    # Informations Mémoire
+    echo -e "  ${MAGENTA}${SYMBOL_RAM} ${BOLD}${WHITE}Mémoire:${NC}"
+    case $PLATFORM in
+        "macos")
+            local total_mem=$(($(sysctl -n hw.memsize) / 1024 / 1024))
+            echo -e "    ${MAGENTA}⬥${NC} ${WHITE}Total:${NC} ${total_mem}M"
+            ;;
+        *)
+            echo -e "    ${MAGENTA}⬥${NC} ${WHITE}RAM:${NC} $(free -h | grep "Mem:" | awk '{printf "Total: %s, Utilisé: %s, Libre: %s", $2, $3, $4}')"
+            echo -e "    ${MAGENTA}⬥${NC} ${WHITE}Swap:${NC} $(free -h | grep "Swap:" | awk '{printf "Total: %s, Utilisé: %s, Libre: %s", $2, $3, $4}')"
+            ;;
+    esac
+    
+    # Informations Disque
+    echo -e "  ${YELLOW}${SYMBOL_DISK} ${BOLD}${WHITE}Disque:${NC}"
+    case $PLATFORM in
+        "macos")
+            df -h / | awk 'NR==2 {printf "    %s Total: %s, Utilisé: %s, Disponible: %s\n", "⬥", $2, $3, $4}'
+            ;;
+        *)
+            df -h / | awk 'NR==2 {printf "    %s Total: %s, Utilisé: %s, Disponible: %s\n", "⬥", $2, $3, $4}'
+            ;;
+    esac
+    
+    # Température CPU
+    echo -e "  ${RED}${SYMBOL_TEMP} ${BOLD}${WHITE}Température:${NC}"
+    echo -e "    ${RED}⬥${NC} ${WHITE}CPU:${NC} $(get_cpu_temp)"
 }
 
 # Fonction pour installer les paquets requis
@@ -163,123 +460,6 @@ install_packages() {
     fi
 }
 
-# Fonction pour obtenir la température CPU
-get_cpu_temp() {
-    case $PLATFORM in
-        "macos")
-            if command -v osx-cpu-temp &> /dev/null; then
-                osx-cpu-temp | sed 's/°C//'
-            else
-                echo "N/A"
-            fi
-            ;;
-        "raspbian")
-            if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
-                awk '{printf "%.1f°C", $1/1000}' /sys/class/thermal/thermal_zone0/temp
-            else
-                echo "N/A"
-            fi
-            ;;
-        *)
-            if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
-                awk '{printf "%.1f°C", $1/1000}' /sys/class/thermal/thermal_zone0/temp
-            else
-                echo "N/A"
-            fi
-            ;;
-    esac
-}
-
-# Fonction pour afficher l'en-tête
-show_header() {
-    clear
-    echo -e "${BLUE}=====================================================${NC}"
-    echo -e "${BLUE}    Script de Benchmarking Raspberry Pi v2.0        ${NC}"
-    echo -e "${BLUE}=====================================================${NC}"
-    echo -e "${YELLOW}Date: $(date)${NC}"
-    echo -e "${YELLOW}Log file: $LOG_FILE${NC}"
-    echo -e "${BLUE}=====================================================${NC}\n"
-}
-
-# Fonction pour logger les résultats
-log_result() {
-    local message="$1"
-    
-    # Afficher le message à l'écran
-    echo -e "$message"
-    
-    # Vérifier que le répertoire de résultats existe
-    if [ ! -d "$RESULTS_DIR" ]; then
-        mkdir -p "$RESULTS_DIR" 2>/dev/null || {
-            echo -e "${RED}Impossible de créer le répertoire $RESULTS_DIR${NC}"
-            return 0
-        }
-    fi
-    
-    # Tenter d'écrire dans le fichier journal, mais continuer en cas d'échec
-    echo -e "$message" >> "$LOG_FILE" 2>/dev/null || {
-        echo -e "${RED}Erreur lors de l'écriture dans le fichier journal: $LOG_FILE${NC}" >&2
-        return 0  # Retourner avec succès pour continuer l'exécution
-    }
-}
-
-# Fonction pour obtenir les informations hardware
-get_hardware_info() {
-    log_result "\n${BLUE}=== INFORMATIONS HARDWARE ===${NC}"
-    
-    # Informations CPU
-    log_result "${YELLOW}CPU:${NC}"
-    case $PLATFORM in
-        "macos")
-            log_result "  Modèle: $(sysctl -n machdep.cpu.brand_string)"
-            log_result "  Architecture: $(uname -m)"
-            log_result "  Cœurs: $(sysctl -n hw.ncpu)"
-            ;;
-        "raspbian")
-            log_result "  Modèle: $(cat /proc/cpuinfo | grep "Model" | head -n1 | cut -d: -f2 | sed 's/^[ \t]*//')"
-            log_result "  Architecture: $(uname -m)"
-            log_result "  Cœurs: $(nproc)"
-            if command -v vcgencmd &> /dev/null; then
-                log_result "  Fréquence: $(vcgencmd measure_clock arm | awk -F'=' '{printf "%.0f MHz\n", $2/1000000}')"
-                log_result "  Voltage: $(vcgencmd measure_volts core | cut -d'=' -f2)"
-            fi
-            ;;
-        *)
-            log_result "  Modèle: $(cat /proc/cpuinfo | grep "model name" | head -n1 | cut -d: -f2 | sed 's/^[ \t]*//')"
-            log_result "  Architecture: $(uname -m)"
-            log_result "  Cœurs: $(nproc)"
-            ;;
-    esac
-    
-    # Informations Mémoire
-    log_result "\n${YELLOW}Mémoire:${NC}"
-    case $PLATFORM in
-        "macos")
-            local total_mem=$(($(sysctl -n hw.memsize) / 1024 / 1024))
-            log_result "  Total: ${total_mem}M"
-            ;;
-        *)
-            log_result "  $(free -h | grep "Mem:" | awk '{printf "Total: %s, Utilisé: %s, Libre: %s", $2, $3, $4}')"
-            log_result "  Swap: $(free -h | grep "Swap:" | awk '{printf "Total: %s, Utilisé: %s, Libre: %s", $2, $3, $4}')"
-            ;;
-    esac
-    
-    # Informations Disque
-    log_result "\n${YELLOW}Disque:${NC}"
-    case $PLATFORM in
-        "macos")
-            df -h / | awk 'NR==2 {printf "  Total: %s, Utilisé: %s, Disponible: %s\n", $2, $3, $4}'
-            ;;
-        *)
-            df -h / | awk 'NR==2 {printf "  Total: %s, Utilisé: %s, Disponible: %s\n", $2, $3, $4}'
-            ;;
-    esac
-    
-    # Température CPU
-    log_result "\n${YELLOW}Température:${NC}"
-    log_result "  CPU: $(get_cpu_temp)"
-}
-
 # Fonction pour obtenir les informations réseau
 get_network_info() {
     log_result "\n${BLUE}=== INFORMATIONS RÉSEAU ===${NC}"
@@ -339,101 +519,37 @@ format_number() {
     fi
 }
 
-# Fonction pour formater les tableaux
-format_table() {
-    local title=$1
-    shift
-    local metrics=("$@")
-    
-    # Définir les largeurs fixes (encore augmentées)
-    local name_width=35
-    local value_width=55 # Réduit pour mieux s'adapter aux terminaux étroits
-    
-    # Couleurs pour le tableau
-    local title_bg=$BLUE
-    local name_color=$YELLOW
-    local value_color=$GREEN
-    local border_color=$CYAN
-    
-    # Symboles pour les bordures (ASCII standard)
-    local top_left="+"
-    local top_right="+"
-    local bottom_left="+"
-    local bottom_right="+"
-    local horizontal="-"
-    local vertical="|"
-    local cross="+"
-    
-    # Largeur totale du tableau
-    local table_width=$((name_width + value_width + 3))
-    
-    # Enregistrer les métriques dans le journal, mais pas dans la sortie standard
-    {
-        echo -e "\n# Données pour $title"
-        for metric in "${metrics[@]}"; do
-            local name=$(echo "$metric" | cut -d':' -f1)
-            local value=$(echo "$metric" | cut -d':' -f2-)
-            # Supprimer les espaces en début et fin de la valeur
-            value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-            echo "$name: $value"
-        done
-    } >> "$LOG_FILE" 2>/dev/null
-    
-    # Afficher le titre du tableau
-    echo -e "\n${BLUE}${title}${NC}"
-    
-    # Ligne séparatrice supérieure
-    printf "${border_color}%s" "$top_left"
-    for ((i=0; i<name_width; i++)); do 
-        printf "%s" "$horizontal"
-    done
-    printf "%s" "$cross"
-    for ((i=0; i<value_width; i++)); do 
-        printf "%s" "$horizontal"
-    done
-    printf "%s${NC}\n" "$top_right"
-    
-    # Afficher les données
-    for metric in "${metrics[@]}"; do
-        local name=$(echo "$metric" | cut -d':' -f1)
-        local value=$(echo "$metric" | cut -d':' -f2-)
-        # Supprimer les espaces en début et fin de la valeur
-        value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-        
-        printf "${border_color}%s${name_color}%-${name_width}s${border_color}%s${value_color}%${value_width}s${border_color}%s${NC}\n" \
-               "$vertical" " $name" "$vertical" " $value" "$vertical"
-    done
-    
-    # Ligne séparatrice finale
-    printf "${border_color}%s" "$bottom_left"
-    for ((i=0; i<name_width; i++)); do 
-        printf "%s" "$horizontal"
-    done
-    printf "%s" "$cross"
-    for ((i=0; i<value_width; i++)); do 
-        printf "%s" "$horizontal"
-    done
-    printf "%s${NC}\n" "$bottom_right"
-}
-
 # Fonction pour le benchmark CPU
 benchmark_cpu() {
-    log_result "\n${BLUE}=== BENCHMARK CPU ===${NC}"
+    modern_header "BENCHMARK CPU" $CYAN $SYMBOL_CPU
     
     case $PLATFORM in
         "macos")
             # Test single-thread avec sysctl
+            echo -e "${WHITE}${BOLD}Test de performance CPU pour macOS...${NC}"
+            echo -e "${YELLOW}${SYMBOL_INFO} Collecte des informations sur le processeur...${NC}"
+            
             local cpu_brand=$(sysctl -n machdep.cpu.brand_string)
             local cpu_cores=$(sysctl -n hw.ncpu)
             local cpu_freq=$(sysctl -n hw.cpufrequency)
             
             # Test de performance avec dd
+            echo -e "${YELLOW}${SYMBOL_INFO} Exécution du test de performance...${NC}"
+            
             local temp_file=$(mktemp)
             local start_time=$(date +%s.%N)
+            
+            # Barre de progression simulée
+            for i in {1..10}; do
+                show_progress $((i*10))
+                sleep 0.1
+            done
+            
             dd if=/dev/zero of="$temp_file" bs=1M count=1000 2>/dev/null
             local end_time=$(date +%s.%N)
             local write_speed=$(echo "scale=2; 1000 / ($end_time - $start_time)" | bc)
             rm "$temp_file"
+            echo -e "\n${GREEN}${SYMBOL_CHECK} Test terminé ${NC}"
             
             # Formatage pour assurer un alignement parfait - Traitement exact du modèle
             # Stockage de chaque élément dans une variable intermédiaire
@@ -452,11 +568,32 @@ benchmark_cpu() {
             ;;
         *)
             # Test standard pour Linux
-    local results=$(sysbench cpu --cpu-max-prime=20000 --threads=1 run 2>/dev/null)
-    local events=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
-    local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}' | sed 's/s$//')
-    local ops=$(echo "$results" | grep 'events per second:' | awk '{print $NF}')
-    
+            echo -e "${WHITE}${BOLD}Test de performance CPU pour Linux...${NC}"
+            echo -e "${YELLOW}${SYMBOL_INFO} Exécution du benchmark sysbench CPU...${NC}"
+            
+            # Barre de progression simulée pendant que sysbench s'exécute
+            show_progress 0
+            local results=$(sysbench cpu --cpu-max-prime=20000 --threads=1 run 2>/dev/null) &
+            local pid=$!
+            
+            # Afficher une barre de progression pendant l'exécution
+            local progress=0
+            while kill -0 $pid 2>/dev/null; do
+                progress=$((progress + 5))
+                [ $progress -gt 95 ] && progress=95
+                show_progress $progress
+                sleep 0.2
+            done
+            
+            # Attendre la fin de sysbench
+            wait $pid
+            show_progress 100
+            echo -e "\n${GREEN}${SYMBOL_CHECK} Test terminé ${NC}"
+            
+            local events=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
+            local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}' | sed 's/s$//')
+            local ops=$(echo "$results" | grep 'events per second:' | awk '{print $NF}')
+            
             # Formatage pour assurer un alignement parfait - Traitement explicite
             local events_value=$(printf "%d" "${events:-0}")
             local time_value=$(printf "%.2f sec" "$(format_number "$time")")
@@ -476,16 +613,40 @@ benchmark_cpu() {
 
 # Fonction pour le benchmark threads
 benchmark_threads() {
-    log_result "\n${BLUE}=== BENCHMARK THREADS ===${NC}"
+    modern_header "BENCHMARK THREADS" $PURPLE $SYMBOL_BOLT
+    
+    echo -e "${WHITE}${BOLD}Test de performance multi-threads...${NC}"
+    echo -e "${YELLOW}${SYMBOL_INFO} Détection du nombre de cœurs CPU: $(get_cpu_cores)${NC}"
+    echo -e "${YELLOW}${SYMBOL_INFO} Exécution du benchmark sysbench threads...${NC}"
     
     local cpu_cores=$(get_cpu_cores)
-    local results=$(sysbench threads --threads=$cpu_cores --thread-yields=1000 --thread-locks=8 run 2>/dev/null)
+    
+    # Barre de progression simulée pendant que sysbench s'exécute
+    show_progress 0
+    local results=$(sysbench threads --threads=$cpu_cores --thread-yields=1000 --thread-locks=8 run 2>/dev/null) &
+    local pid=$!
+    
+    # Afficher une barre de progression pendant l'exécution
+    local progress=0
+    while kill -0 $pid 2>/dev/null; do
+        progress=$((progress + 5))
+        [ $progress -gt 95 ] && progress=95
+        show_progress $progress
+        sleep 0.2
+    done
+    
+    # Attendre la fin de sysbench
+    wait $pid
+    show_progress 100
+    echo -e "\n${GREEN}${SYMBOL_CHECK} Test terminé ${NC}"
+    
     local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}' | sed 's/s$//')
     local ops=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
     local latency=$(echo "$results" | grep 'avg:' | awk '{print $NF}' | sed 's/ms$//')
     
     # Préparer les données pour le tableau
     local metrics=(
+        "Nombre de threads:$cpu_cores"
         "Temps d'exécution:$(printf "%.2f sec" "$(format_number "$time")")"
         "Opérations totales:$(printf "%d" "${ops:-0}")"
         "Latence moyenne:$(printf "%.2f ms" "$(format_number "$latency")")"
@@ -496,10 +657,13 @@ benchmark_threads() {
 
 # Fonction pour le benchmark mémoire
 benchmark_memory() {
-    log_result "\n${BLUE}=== BENCHMARK MÉMOIRE ===${NC}"
+    modern_header "BENCHMARK MÉMOIRE" $MAGENTA $SYMBOL_RAM
     
     case $PLATFORM in
         "macos")
+            echo -e "${WHITE}${BOLD}Test de performance mémoire pour macOS...${NC}"
+            echo -e "${YELLOW}${SYMBOL_INFO} Collecte des informations sur la mémoire...${NC}"
+            
             # Utiliser vm_stat et top pour macOS
             local total_memory=$(sysctl -n hw.memsize)
             local page_size=$(vm_stat | grep "page size" | awk '{print $8}')
@@ -509,35 +673,55 @@ benchmark_memory() {
             local free_memory=$(( (free_pages * page_size) / 1024 / 1024 ))
             
             # Test de performance avec dd
+            echo -e "${YELLOW}${SYMBOL_INFO} Exécution du test de transfert mémoire...${NC}"
+            
+            # Barre de progression simulée
+            for i in {1..10}; do
+                show_progress $((i*10))
+                sleep 0.1
+            done
+            
             local temp_file=$(mktemp)
             local start_time=$(date +%s.%N)
             dd if=/dev/zero of="$temp_file" bs=1M count=1000 2>/dev/null
             local end_time=$(date +%s.%N)
             local write_speed=$(echo "scale=2; 1000 / ($end_time - $start_time)" | bc)
             rm "$temp_file"
+            echo -e "\n${GREEN}${SYMBOL_CHECK} Test terminé ${NC}"
+            
+            # Conversion en GB pour l'affichage
+            local total_gb=$(echo "scale=2; $total_memory/1024/1024/1024" | bc)
             
             # Préparer les données pour le tableau
             local metrics=(
-                "Mémoire totale:$(printf "%.2f GB" "$(echo "scale=2; $total_memory/1024/1024/1024" | bc)")"
+                "Mémoire totale:$(printf "%.2f GB" "$total_gb")"
                 "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
                 "Mémoire libre:$(printf "%d MB" "$free_memory")"
-                "Vitesse d'écriture:$(printf "%.2f MB/s" "$write_speed")"
+                "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$((used_memory+free_memory))" | bc)")"
+                "Vitesse de transfert:$(printf "%.2f MB/s" "$write_speed")"
             )
             
             format_table "Résultats Mémoire" "${metrics[@]}"
             ;;
         *)
             # Test de mémoire plus fiable pour Linux
-            log_result "${YELLOW}Test de performance mémoire...${NC}"
+            echo -e "${WHITE}${BOLD}Test de performance mémoire pour Linux...${NC}"
             
             # Vérifier que sysbench est disponible
             if ! command -v sysbench &>/dev/null; then
-                log_result "${RED}sysbench non disponible. Utilisation d'une méthode alternative.${NC}"
+                echo -e "${RED}${SYMBOL_WARNING} sysbench non disponible. Utilisation d'une méthode alternative.${NC}"
                 
                 # Méthode alternative avec dd
-                log_result "  Utilisation de dd pour le test de mémoire..."
+                echo -e "${YELLOW}${SYMBOL_INFO} Utilisation de dd pour le test de mémoire...${NC}"
                 local temp_file="/tmp/memory_benchmark_$$"
                 local size_mb=100
+                
+                # Barre de progression simulée
+                for i in {1..10}; do
+                    show_progress $((i*10))
+                    sleep 0.1
+                done
+                
                 local start_time=$(date +%s)
                 dd if=/dev/zero of="$temp_file" bs=1M count=$size_mb status=none 2>/dev/null
                 local end_time=$(date +%s)
@@ -554,8 +738,10 @@ benchmark_memory() {
                 
                 # Nettoyer
                 rm -f "$temp_file" 2>/dev/null
+                echo -e "${GREEN}${SYMBOL_CHECK} Test terminé ${NC}"
                 
                 # Récupérer les infos mémoire du système
+                echo -e "${YELLOW}${SYMBOL_INFO} Lecture des informations système...${NC}"
                 local mem_info=$(free -m)
                 local total_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $2}')
                 local used_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $3}')
@@ -566,21 +752,48 @@ benchmark_memory() {
                     "Mémoire totale:$(printf "%d MB" "$total_memory")"
                     "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
                     "Mémoire libre:$(printf "%d MB" "$free_memory")"
-                    "Opérations totales:100"
-                    "Total transféré:100 MiB"
+                    "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
+                    "Opérations testées:100"
+                    "Données transférées:$(printf "%d MiB" "$size_mb")"
                     "Vitesse de transfert:$(printf "%d MiB/sec" "$transfer_speed")"
                 )
                 
                 format_table "Résultats Mémoire" "${metrics[@]}"
             else
                 # Test standard avec sysbench
-                log_result "  Utilisation de sysbench pour le test de mémoire..."
-                local results=$(sysbench memory --memory-block-size=1K --memory-total-size=10G --memory-access-mode=seq run 2>/dev/null)
+                echo -e "${YELLOW}${SYMBOL_INFO} Utilisation de sysbench pour le test de mémoire...${NC}"
+                
+                # Barre de progression simulée pendant que sysbench s'exécute
+                show_progress 0
+                local results=$(sysbench memory --memory-block-size=1K --memory-total-size=10G --memory-access-mode=seq run 2>/dev/null) &
+                local pid=$!
+                
+                # Afficher une barre de progression pendant l'exécution
+                local progress=0
+                while kill -0 $pid 2>/dev/null; do
+                    progress=$((progress + 5))
+                    [ $progress -gt 95 ] && progress=95
+                    show_progress $progress
+                    sleep 0.2
+                done
+                
+                # Attendre la fin de sysbench
+                wait $pid
+                show_progress 100
+                echo -e "\n${GREEN}${SYMBOL_CHECK} Test terminé ${NC}"
                 
                 if [ $? -ne 0 ] || [ -z "$results" ]; then
-                    log_result "${RED}Échec du test sysbench. Utilisation d'une méthode alternative.${NC}"
+                    echo -e "${RED}${SYMBOL_CROSS} Échec du test sysbench. Utilisation d'une méthode alternative.${NC}"
                     
-                    # Même méthode alternative que ci-dessus
+                    # Méthode alternative avec dd (identique à celle ci-dessus)
+                    echo -e "${YELLOW}${SYMBOL_INFO} Utilisation de dd pour le test de mémoire...${NC}"
+                    
+                    # Barre de progression simulée
+                    for i in {1..10}; do
+                        show_progress $((i*10))
+                        sleep 0.1
+                    done
+                    
                     local temp_file="/tmp/memory_benchmark_$$"
                     local size_mb=100
                     local start_time=$(date +%s)
@@ -599,8 +812,10 @@ benchmark_memory() {
                     
                     # Nettoyer
                     rm -f "$temp_file" 2>/dev/null
+                    echo -e "${GREEN}${SYMBOL_CHECK} Test terminé ${NC}"
                     
                     # Récupérer les infos mémoire du système
+                    echo -e "${YELLOW}${SYMBOL_INFO} Lecture des informations système...${NC}"
                     local mem_info=$(free -m)
                     local total_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $2}')
                     local used_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $3}')
@@ -611,8 +826,9 @@ benchmark_memory() {
                         "Mémoire totale:$(printf "%d MB" "$total_memory")"
                         "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
                         "Mémoire libre:$(printf "%d MB" "$free_memory")"
-                        "Opérations totales:100"
-                        "Total transféré:100 MiB"
+                        "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
+                        "Opérations testées:100"
+                        "Données transférées:$(printf "%d MiB" "$size_mb")"
                         "Vitesse de transfert:$(printf "%d MiB/sec" "$transfer_speed")"
                     )
                     
@@ -629,6 +845,7 @@ benchmark_memory() {
                     [ -z "$transfer_speed" ] || [ "$transfer_speed" = "0" ] && transfer_speed=1000
                     
                     # Récupérer les infos mémoire du système
+                    echo -e "${YELLOW}${SYMBOL_INFO} Lecture des informations système...${NC}"
                     local mem_info=$(free -m)
                     local total_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $2}')
                     local used_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $3}')
@@ -639,8 +856,9 @@ benchmark_memory() {
                         "Mémoire totale:$(printf "%d MB" "$total_memory")"
                         "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
                         "Mémoire libre:$(printf "%d MB" "$free_memory")"
+                        "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
                         "Opérations totales:$(printf "%s" "$total_ops")"
-                        "Total transféré:$(printf "%s MiB" "$total_transferred")"
+                        "Données transférées:$(printf "%s MiB" "$total_transferred")"
                         "Vitesse de transfert:$(printf "%.2f MiB/sec" "$transfer_speed")"
                     )
                     
@@ -653,7 +871,7 @@ benchmark_memory() {
 
 # Fonction pour le benchmark disque
 benchmark_disk() {
-    log_result "\n${BLUE}=== BENCHMARK DISQUE ===${NC}"
+    modern_header "BENCHMARK DISQUE" $YELLOW $SYMBOL_DISK
     
     # S'assurer que le répertoire des résultats existe
     mkdir -p "$RESULTS_DIR" 2>/dev/null
@@ -666,73 +884,104 @@ benchmark_disk() {
     local read_speed=0
     
     # Obtenir les informations sur l'espace disque avec df (commande de base)
-    log_result "Récupération des informations de disque..."
+    echo -e "${WHITE}${BOLD}Analyse des performances disque...${NC}"
+    echo -e "${YELLOW}${SYMBOL_INFO} Récupération des informations de disque...${NC}"
+    
     if df -h / 2>/dev/null >/dev/null; then
         total_size=$(df -h / | awk 'NR==2 {print $2}')
         used_space=$(df -h / | awk 'NR==2 {print $3}')
         free_space=$(df -h / | awk 'NR==2 {print $4}')
-        log_result "  Espace disque: Total=$total_size, Utilisé=$used_space, Libre=$free_space"
+        echo -e "${GREEN}${SYMBOL_CHECK} Espace disque: ${WHITE}Total=${LIME}$total_size${NC}, ${WHITE}Utilisé=${YELLOW}$used_space${NC}, ${WHITE}Libre=${GREEN}$free_space${NC}"
     else
-        log_result "${YELLOW}Impossible d'obtenir les informations sur l'espace disque${NC}"
+        echo -e "${YELLOW}${SYMBOL_WARNING} Impossible d'obtenir les informations sur l'espace disque${NC}"
     fi
     
-    # Simplification extrême : on teste directement dans le répertoire courant
-    log_result "${YELLOW}Test de performance disque simplifié en cours...${NC}"
+    # Test de performance disque
+    echo -e "${YELLOW}${SYMBOL_INFO} Test de performance disque en cours...${NC}"
     
     # Fichier temporaire directement dans le répertoire courant
     local test_file="./tmp_benchmark_file_$$"
     
     # Test d'écriture ultra simple avec dd
-    log_result "  Exécution du test d'écriture..."
+    echo -e "${YELLOW}${SYMBOL_BOLT} Exécution du test d'écriture...${NC}"
+    
+    # Barre de progression simulée
+    for i in {1..10}; do
+        show_progress $((i*10))
+        sleep 0.1
+    done
+    
     local start_time=$(date +%s)
     dd if=/dev/zero of="$test_file" bs=4k count=5000 status=none 2>/dev/null
     local end_time=$(date +%s)
     local time_diff=$((end_time - start_time))
+    echo -e "\n${GREEN}${SYMBOL_CHECK} Test d'écriture terminé ${NC}"
     
     # Calcul simple de la vitesse d'écriture
     if [[ -f "$test_file" ]]; then
         if [[ $time_diff -gt 0 ]]; then
             # 5000 * 4k = 20M
             write_speed=$((20 / time_diff))
-            log_result "  Vitesse d'écriture: ${write_speed} MB/s"
+            echo -e "${GREEN}Vitesse d'écriture: ${WHITE}${write_speed}${NC} MB/s"
         else
             write_speed=20  # Si trop rapide pour être mesuré
-            log_result "  Vitesse d'écriture: >20 MB/s (trop rapide pour être mesuré précisément)"
+            echo -e "${GREEN}Vitesse d'écriture: ${WHITE}>20${NC} MB/s (trop rapide pour être mesuré précisément)"
         fi
         
         # Test de lecture simple
-        log_result "  Exécution du test de lecture..."
+        echo -e "${YELLOW}${SYMBOL_BOLT} Exécution du test de lecture...${NC}"
+        
+        # Barre de progression simulée
+        for i in {1..10}; do
+            show_progress $((i*10))
+            sleep 0.1
+        done
+        
         start_time=$(date +%s)
         dd if="$test_file" of=/dev/null bs=4k count=5000 status=none 2>/dev/null
         end_time=$(date +%s)
         time_diff=$((end_time - start_time))
+        echo -e "\n${GREEN}${SYMBOL_CHECK} Test de lecture terminé ${NC}"
         
         if [[ $time_diff -gt 0 ]]; then
             read_speed=$((20 / time_diff))
-            log_result "  Vitesse de lecture: ${read_speed} MB/s"
+            echo -e "${GREEN}Vitesse de lecture: ${WHITE}${read_speed}${NC} MB/s"
         else
             read_speed=20  # Si trop rapide pour être mesuré
-            log_result "  Vitesse de lecture: >20 MB/s (trop rapide pour être mesuré précisément)"
+            echo -e "${GREEN}Vitesse de lecture: ${WHITE}>20${NC} MB/s (trop rapide pour être mesuré précisément)"
         fi
     else
-        log_result "${RED}Erreur: Le test d'écriture a échoué${NC}"
+        echo -e "${RED}${SYMBOL_CROSS} Erreur: Le test d'écriture a échoué${NC}"
     fi
     
     # Nettoyage (même si le fichier n'existe pas, cette commande est sans danger)
     rm -f "$test_file" 2>/dev/null
     
-    # Créer le tableau des résultats 
+    # Créer le tableau des résultats
+    # Calculer le pourcentage d'utilisation
+    local disk_usage=""
+    if [[ "$used_space" != "N/A" && "$total_size" != "N/A" ]]; then
+        # Extraire les valeurs numériques (en supposant qu'elles sont en Go)
+        local used_num=$(echo "$used_space" | sed 's/[A-Za-z]//g')
+        local total_num=$(echo "$total_size" | sed 's/[A-Za-z]//g')
+        if [[ -n "$used_num" && -n "$total_num" ]]; then
+            disk_usage="$(echo "scale=1; $used_num*100/$total_num" | bc)%"
+        fi
+    fi
+    
     local metrics=(
         "Taille totale:$total_size"
         "Espace utilisé:$used_space"
         "Espace libre:$free_space"
+        "Utilisation:${disk_usage:-N/A}"
         "Vitesse d'écriture:$(printf "%d MB/s" "$write_speed")"
         "Vitesse de lecture:$(printf "%d MB/s" "$read_speed")"
+        "Ratio lecture/écriture:$(printf "%.1fx" "$(echo "scale=1; $read_speed/$write_speed" | bc 2>/dev/null || echo 1)")"
     )
     
     format_table "Résultats Disque" "${metrics[@]}"
     
-    log_result "${GREEN}Benchmark disque terminé${NC}"
+    echo -e "\n${GREEN}${SYMBOL_CHECK} Benchmark disque terminé${NC}"
 }
 
 # Fonction pour le benchmark réseau
@@ -1434,19 +1683,25 @@ show_menu() {
     while true; do
         clear
         show_header
-        echo -e "${BLUE}Menu Principal:${NC}"
-        echo -e "1. Afficher les informations système"
-        echo -e "2. Exécuter tous les benchmarks"
-        echo -e "3. Benchmark CPU"
-        echo -e "4. Benchmark Threads"
-        echo -e "5. Benchmark Mémoire"
-        echo -e "6. Benchmark Disque"
-        echo -e "7. Benchmark Réseau"
-        echo -e "8. Stress Test"
-        echo -e "9. Exporter les résultats (CSV et JSON)"
-        echo -e "10. Planifier les benchmarks"
-        echo -e "11. Quitter"
-        echo -e "\nVotre choix: "
+        
+        # Menu stylisé moderne
+        echo -e "${CYAN}${BOLD}╔══════════════════════════ MENU PRINCIPAL ═══════════════════════════╗${NC}"
+        echo -e "${CYAN}${BOLD}║                                                                     ║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_INFO} ${WHITE}1.${NC} ${CYAN}Afficher les informations système${NC}                           ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT} ${WHITE}2.${NC} ${LIME}Exécuter tous les benchmarks${NC}                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CPU} ${WHITE}3.${NC} ${CYAN}Benchmark CPU${NC}                                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT} ${WHITE}4.${NC} ${CYAN}Benchmark Threads${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_RAM} ${WHITE}5.${NC} ${MAGENTA}Benchmark Mémoire${NC}                                           ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_DISK} ${WHITE}6.${NC} ${YELLOW}Benchmark Disque${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_NETWORK} ${WHITE}7.${NC} ${BLUE}Benchmark Réseau${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_TEMP} ${WHITE}8.${NC} ${RED}Stress Test${NC}                                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CHART} ${WHITE}9.${NC} ${GREEN}Exporter les résultats (CSV et JSON)${NC}                     ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CLOCK} ${WHITE}10.${NC} ${PURPLE}Planifier les benchmarks${NC}                                 ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CROSS} ${WHITE}11.${NC} ${RED}Quitter${NC}                                                    ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║                                                                     ║${NC}"
+        echo -e "${CYAN}${BOLD}╚═════════════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        echo -e "${YELLOW}Entrez votre choix ${WHITE}[1-11]${YELLOW}: ${NC}"
         
         read -r choice
         case $choice in
@@ -1464,15 +1719,21 @@ show_menu() {
             9)
                 export_csv
                 export_json
-                echo -e "${GREEN}Résultats exportés en CSV et JSON dans le dossier ${RESULTS_DIR}${NC}"
+                echo -e "${GREEN}${SYMBOL_CHECK} Résultats exportés en CSV et JSON dans le dossier ${RESULTS_DIR}${NC}"
                 read -p "Appuyez sur Entrée pour continuer..."
                 ;;
             10) schedule_benchmark ;;
-            11) exit 0 ;;
-            *) echo -e "${RED}Choix invalide${NC}" ;;
+            11) 
+                echo -e "\n${GREEN}${BOLD}Merci d'avoir utilisé RPi Benchmark! Au revoir.${NC}"
+                exit 0 
+                ;;
+            *) 
+                echo -e "${RED}${SYMBOL_WARNING} Choix invalide. Veuillez réessayer.${NC}"
+                sleep 1
+                ;;
         esac
         
-        echo -e "\nAppuyez sur Entrée pour continuer..."
+        echo -e "\n${YELLOW}Appuyez sur Entrée pour continuer...${NC}"
         read -r
     done
 }
@@ -1483,15 +1744,58 @@ show_dialog_menu() {
     if command -v dialog &> /dev/null && [ -t 0 ] && [ -t 1 ] && [ -t 2 ]; then
         # Utiliser dialog pour un affichage plus convivial
         clear
-        echo -e "${GREEN}Lancement de l'interface dialog...${NC}"
+        echo -e "${GREEN}${SYMBOL_INFO} Lancement de l'interface dialog...${NC}"
         sleep 1
+        
+        # Configuration des couleurs de dialog
+        export DIALOGRC=<(cat << EOF
+# Appearance customization for dialog
+screen_color = (CYAN,BLACK,ON)
+shadow_color = (BLACK,BLACK,ON)
+dialog_color = (BLACK,WHITE,OFF)
+title_color = (BLUE,WHITE,ON)
+border_color = (WHITE,WHITE,ON)
+button_active_color = (WHITE,BLUE,ON)
+button_inactive_color = (BLACK,WHITE,OFF)
+button_key_active_color = (WHITE,BLUE,ON)
+button_key_inactive_color = (RED,WHITE,OFF)
+button_label_active_color = (YELLOW,BLUE,ON)
+button_label_inactive_color = (BLACK,WHITE,ON)
+inputbox_color = (BLACK,WHITE,OFF)
+inputbox_border_color = (BLACK,WHITE,OFF)
+searchbox_color = (BLACK,WHITE,OFF)
+searchbox_title_color = (BLUE,WHITE,ON)
+searchbox_border_color = (WHITE,WHITE,ON)
+position_indicator_color = (BLUE,WHITE,ON)
+menubox_color = (BLACK,WHITE,OFF)
+menubox_border_color = (WHITE,WHITE,ON)
+item_color = (BLACK,WHITE,OFF)
+item_selected_color = (WHITE,BLUE,ON)
+tag_color = (BLUE,WHITE,ON)
+tag_selected_color = (YELLOW,BLUE,ON)
+tag_key_color = (RED,WHITE,OFF)
+tag_key_selected_color = (RED,BLUE,ON)
+check_color = (BLACK,WHITE,OFF)
+check_selected_color = (WHITE,BLUE,ON)
+uarrow_color = (GREEN,WHITE,ON)
+darrow_color = (GREEN,WHITE,ON)
+itemhelp_color = (WHITE,BLACK,OFF)
+form_active_text_color = (WHITE,BLUE,ON)
+form_text_color = (WHITE,CYAN,ON)
+form_item_readonly_color = (CYAN,WHITE,ON)
+EOF
+)
         
         while true; do
             choice=$(dialog --clear \
                 --backtitle "RPi Benchmark v2.0" \
                 --title "Menu Principal" \
+                --ok-label "Sélectionner" \
+                --cancel-label "Quitter" \
+                --help-button \
+                --help-label "À propos" \
                 --menu "Choisissez une option:" \
-                15 50 8 \
+                18 60 11 \
                 1 "Informations système" \
                 2 "Exécuter tous les benchmarks" \
                 3 "Benchmark CPU" \
@@ -1502,8 +1806,22 @@ show_dialog_menu() {
                 8 "Stress Test" \
                 9 "Exporter les résultats" \
                 10 "Planifier les benchmarks" \
-                11 "Quitter" \
                 2>&1 >/dev/tty)
+            
+            exit_status=$?
+            
+            if [ $exit_status -eq 1 ]; then
+                clear
+                echo -e "${GREEN}${BOLD}Merci d'avoir utilisé RPi Benchmark! Au revoir.${NC}"
+                exit 0
+            elif [ $exit_status -eq 2 ]; then
+                # Bouton d'aide pressé, afficher les informations sur le programme
+                dialog --backtitle "RPi Benchmark v2.0" \
+                    --title "À propos" \
+                    --msgbox "RPi Benchmark v2.0\n\nUn outil complet pour évaluer les performances de votre Raspberry Pi\n\n© 2023 - Tous droits réservés\n\nDéveloppé avec ❤️ pour la communauté Raspberry Pi" \
+                    12 60
+                continue
+            fi
             
             case $choice in
                 1)
@@ -1521,15 +1839,14 @@ show_dialog_menu() {
                     clear
                     export_csv
                     export_json
-                    echo -e "${GREEN}Résultats exportés en CSV et JSON dans le dossier ${RESULTS_DIR}${NC}"
+                    echo -e "${GREEN}${SYMBOL_CHECK} Résultats exportés en CSV et JSON dans le dossier ${RESULTS_DIR}${NC}"
                     read -p "Appuyez sur Entrée pour continuer..."
                     ;;
                 10) clear; schedule_benchmark ;;
-                11) clear; exit 0 ;;
                 *) continue ;; # En cas d'annulation, retour au menu
             esac
             
-            echo -e "\nAppuyez sur Entrée pour continuer..."
+            echo -e "\n${YELLOW}Appuyez sur Entrée pour continuer...${NC}"
             read -r
         done
     else
@@ -1550,30 +1867,26 @@ show_dialog_menu() {
 show_enhanced_menu() {
     while true; do
         clear
-        echo -e "${BLUE}=====================================================${NC}"
-        echo -e "${BLUE}    Script de Benchmarking Raspberry Pi v2.0        ${NC}"
-        echo -e "${BLUE}=====================================================${NC}"
-        echo -e "${YELLOW}Date: $(date)${NC}"
-        echo -e "${YELLOW}Log file: $LOG_FILE${NC}"
-        echo -e "${BLUE}=====================================================${NC}\n"
+        show_header
         
-        echo -e "${CYAN}╔════════════════════════════════════════════════╗${NC}"
-        echo -e "${CYAN}║${YELLOW}               MENU PRINCIPAL               ${CYAN}║${NC}"
-        echo -e "${CYAN}╠════════════════════════════════════════════════╣${NC}"
-        echo -e "${CYAN}║${NC} 1. Afficher les informations système         ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} 2. Exécuter tous les benchmarks              ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} 3. Benchmark CPU                             ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} 4. Benchmark Threads                         ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} 5. Benchmark Mémoire                         ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} 6. Benchmark Disque                          ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} 7. Benchmark Réseau                          ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} 8. Stress Test                               ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} 9. Exporter les résultats (CSV et JSON)      ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} 10. Planifier les benchmarks                 ${CYAN}║${NC}"
-        echo -e "${CYAN}║${NC} 11. Quitter                                  ${CYAN}║${NC}"
-        echo -e "${CYAN}╚════════════════════════════════════════════════╝${NC}"
+        # Menu stylisé moderne avec bordure
+        echo -e "${MAGENTA}${BOLD}╭─────────────────────────────────────────────────────────────────╮${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}${BG_MAGENTA}${WHITE}${BOLD}                          MENU PRINCIPAL                         ${NC}${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}├─────────────────────────────────────────────────────────────────┤${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_INFO}  ${WHITE}[1]${NC} ${CYAN}Afficher les informations système${NC}               ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_BOLT}  ${WHITE}[2]${NC} ${GREEN}Exécuter tous les benchmarks${NC}                   ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_CPU}  ${WHITE}[3]${NC} ${BLUE}Benchmark CPU${NC}                                   ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_BOLT}  ${WHITE}[4]${NC} ${TEAL}Benchmark Threads${NC}                               ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_RAM}  ${WHITE}[5]${NC} ${MAGENTA}Benchmark Mémoire${NC}                              ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_DISK}  ${WHITE}[6]${NC} ${YELLOW}Benchmark Disque${NC}                               ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_NETWORK}  ${WHITE}[7]${NC} ${BLUE}Benchmark Réseau${NC}                               ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_TEMP}  ${WHITE}[8]${NC} ${RED}Stress Test${NC}                                   ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_CHART}  ${WHITE}[9]${NC} ${GREEN}Exporter les résultats${NC}                         ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_CLOCK} ${WHITE}[10]${NC} ${PURPLE}Planifier les benchmarks${NC}                      ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_CROSS} ${WHITE}[11]${NC} ${RED}Quitter${NC}                                         ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}╰─────────────────────────────────────────────────────────────────╯${NC}"
         echo ""
-        echo -e "${GREEN}Entrez votre choix [1-11]:${NC} "
+        echo -e "${YELLOW}${BOLD}Entrez votre choix [1-11]:${NC} "
         read -p "" choice
 
         case $choice in
@@ -1589,20 +1902,24 @@ show_enhanced_menu() {
                 clear
                 export_csv
                 export_json
-                echo -e "${GREEN}Résultats exportés en CSV et JSON dans le dossier ${RESULTS_DIR}${NC}"
+                echo -e "${GREEN}${SYMBOL_CHECK} Résultats exportés en CSV et JSON dans le dossier ${RESULTS_DIR}${NC}"
                 read -p "Appuyez sur Entrée pour continuer..."
                 ;;
             10) clear; schedule_benchmark ;;
-            11) clear; exit 0 ;;
+            11) 
+                clear
+                echo -e "\n${GREEN}${BOLD}Merci d'avoir utilisé RPi Benchmark! Au revoir.${NC}"
+                exit 0 
+                ;;
             *) 
-                echo -e "${RED}Choix invalide. Veuillez réessayer.${NC}"
+                echo -e "${RED}${SYMBOL_WARNING} Choix invalide. Veuillez réessayer.${NC}"
                 sleep 2
                 ;;
         esac
         
         if [[ $choice != 9 ]] && [[ $choice != 11 ]]; then
             echo ""
-            echo -e "${YELLOW}Appuyez sur Entrée pour revenir au menu principal...${NC}"
+            echo -e "${YELLOW}${BOLD}Appuyez sur Entrée pour revenir au menu principal...${NC}"
             read -p ""
         fi
     done
