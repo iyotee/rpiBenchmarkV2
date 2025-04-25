@@ -29,16 +29,37 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     PLATFORM="macos"
 elif [[ -f /etc/os-release ]]; then
     source /etc/os-release
-    if [[ "$ID" == "raspbian" ]] || [[ "$ID_LIKE" == *"debian"* ]]; then
+    if [[ "$ID" == "raspbian" ]] || [[ "$ID" == "debian" ]] || [[ "$ID_LIKE" == *"debian"* ]]; then
         PLATFORM="raspbian"
     elif [[ "$ID" == "ubuntu" ]] || [[ "$ID_LIKE" == *"ubuntu"* ]]; then
         PLATFORM="ubuntu"
     fi
+elif [[ -f /proc/cpuinfo ]] && grep -q "Raspberry Pi" /proc/cpuinfo; then
+    PLATFORM="raspbian"
+fi
+
+# Si toujours inconnu mais existence de commandes spécifiques Raspberry
+if [[ "$PLATFORM" == "unknown" ]] && command -v vcgencmd &> /dev/null; then
+    PLATFORM="raspbian"
 fi
 
 # Fonction pour afficher une erreur et quitter
 display_error() {
     echo -e "${RED}Erreur: $1${NC}"
+    echo -e "${YELLOW}Informations de diagnostic:${NC}"
+    echo -e "  Plateforme détectée: $PLATFORM"
+    echo -e "  Système d'exploitation: $(uname -a)"
+    
+    if [[ -f /etc/os-release ]]; then
+        echo -e "  Contenu de /etc/os-release:"
+        cat /etc/os-release
+    fi
+    
+    if [[ -f /proc/cpuinfo ]]; then
+        echo -e "  Modèle CPU:"
+        grep "model name\|Model" /proc/cpuinfo | head -n1
+    fi
+    
     exit 1
 }
 
@@ -72,7 +93,12 @@ install_packages() {
                 packages+=("osx-cpu-temp")
             fi
             ;;
+        "raspbian"|"ubuntu")
+            packages=("sysbench" "stress-ng" "speedtest-cli" "bc" "dnsutils" "hdparm" "python3" "python3-pip" "sqlite3" "dialog")
+            ;;
         *)
+            # Même sur plateforme inconnue, tentons d'installer les paquets standard Linux
+            echo -e "${YELLOW}Plateforme non reconnue. Tentative d'installation des paquets Linux par défaut...${NC}"
             packages=("sysbench" "stress-ng" "speedtest-cli" "bc" "dnsutils" "hdparm" "python3" "python3-pip" "sqlite3" "dialog")
             ;;
     esac
@@ -124,7 +150,13 @@ install_packages() {
                 done
                 ;;
             *)
-                display_error "Plateforme non supportée: $PLATFORM"
+                # Tentative d'installation avec apt-get (commun à la plupart des distributions Linux)
+                echo -e "${YELLOW}Tentative d'installation avec apt-get...${NC}"
+                apt-get update
+                for package in "${missing_deps[@]}"; do
+                    echo -e "${YELLOW}Installation de $package...${NC}"
+                    apt-get install -y "$package" || echo -e "${RED}Échec de l'installation de $package${NC}"
+                done
                 ;;
         esac
         echo -e "${GREEN}Installation des paquets terminée.${NC}"
@@ -1462,6 +1494,17 @@ schedule_benchmark() {
 
 # Fonction principale
 main() {
+    # Vérification explicite si nous sommes sur une Raspberry Pi
+    if [[ "$PLATFORM" == "unknown" ]]; then
+        if [[ -f /proc/device-tree/model ]] && grep -q "Raspberry Pi" /proc/device-tree/model; then
+            PLATFORM="raspbian"
+            echo -e "${GREEN}Raspberry Pi détectée via /proc/device-tree/model${NC}"
+        elif [[ -f /proc/cpuinfo ]] && grep -q "Raspberry Pi" /proc/cpuinfo; then
+            PLATFORM="raspbian"
+            echo -e "${GREEN}Raspberry Pi détectée via /proc/cpuinfo${NC}"
+        fi
+    fi
+    
     # Vérification des privilèges administrateur (sauf pour macOS)
     if [[ "$PLATFORM" != "macos" ]] && [[ $EUID -ne 0 ]]; then
         display_error "Ce script doit être exécuté en tant qu'administrateur (root) sur Linux/Raspberry Pi."
