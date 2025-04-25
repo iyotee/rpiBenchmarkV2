@@ -204,20 +204,23 @@ show_header() {
 # Fonction pour logger les résultats
 log_result() {
     local message="$1"
-    echo -e "$message" | tee -a "$LOG_FILE"
     
-    # Vérifier si l'écriture a réussi
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Erreur lors de l'écriture dans le fichier journal: $LOG_FILE${NC}"
-        echo -e "${YELLOW}Contenu du message: $message${NC}"
-        
-        # Afficher le répertoire existant
-        echo -e "${YELLOW}Vérification du répertoire:${NC}"
-        ls -la "$RESULTS_DIR"
-        
-        # Tenter d'écrire directement dans le fichier
-        echo -e "$message" >> "$LOG_FILE" 2>/dev/null || echo -e "${RED}Échec de l'écriture directe${NC}"
+    # Afficher le message à l'écran
+    echo -e "$message"
+    
+    # Vérifier que le répertoire de résultats existe
+    if [ ! -d "$RESULTS_DIR" ]; then
+        mkdir -p "$RESULTS_DIR" 2>/dev/null || {
+            echo -e "${RED}Impossible de créer le répertoire $RESULTS_DIR${NC}"
+            return 0
+        }
     fi
+    
+    # Tenter d'écrire dans le fichier journal, mais continuer en cas d'échec
+    echo -e "$message" >> "$LOG_FILE" 2>/dev/null || {
+        echo -e "${RED}Erreur lors de l'écriture dans le fichier journal: $LOG_FILE${NC}" >&2
+        return 0  # Retourner avec succès pour continuer l'exécution
+    }
 }
 
 # Fonction pour obtenir les informations hardware
@@ -548,6 +551,9 @@ benchmark_memory() {
 benchmark_disk() {
     log_result "\n${BLUE}=== BENCHMARK DISQUE ===${NC}"
     
+    # S'assurer que le répertoire des résultats existe
+    mkdir -p "$RESULTS_DIR" 2>/dev/null
+    
     # Variables communes
     local total_size="N/A"
     local used_space="N/A"
@@ -613,10 +619,23 @@ benchmark_disk() {
             # Méthode plus sûre pour Linux/Raspberry Pi
             log_result "${YELLOW}Test de performance disque en cours...${NC}"
             
-            # Créer un répertoire temporaire plus sûr
-            local test_dir="/tmp/disk_benchmark_$$"
-            mkdir -p "$test_dir" || { 
-                log_result "${RED}Impossible de créer le répertoire temporaire $test_dir${NC}"
+            # Vérifier si le répertoire /tmp est accessible
+            if ! [ -w "/tmp" ]; then
+                log_result "${RED}Le répertoire /tmp n'est pas accessible en écriture. Utilisation du répertoire courant.${NC}"
+                local test_dir="./disk_benchmark_$$"
+            else
+                local test_dir="/tmp/disk_benchmark_$$"
+            fi
+            
+            # Créer le répertoire de test
+            mkdir -p "$test_dir" 2>/dev/null || { 
+                log_result "${RED}Impossible de créer le répertoire temporaire. Utilisation du répertoire courant.${NC}"
+                test_dir="."
+            }
+            
+            # Vérifier que nous pouvons écrire dans le répertoire de test
+            if ! [ -w "$test_dir" ]; then
+                log_result "${RED}Le répertoire de test n'est pas accessible en écriture. Tests de performance limités.${NC}"
                 local metrics=(
                     "Taille totale:$total_size"
                     "Espace utilisé:$used_space"
@@ -625,14 +644,15 @@ benchmark_disk() {
                     "Vitesse de lecture:N/A"
                 )
                 format_table "Résultats Disque" "${metrics[@]}"
-                return 1
-            }
+                return 0
+            fi
             
-            # Changer vers le répertoire temporaire
+            # Mémoriser le répertoire courant
             local current_dir=$(pwd)
-            cd "$test_dir" || {
-                log_result "${RED}Impossible d'accéder au répertoire temporaire $test_dir${NC}"
-                rm -rf "$test_dir" 2>/dev/null
+            
+            # Tenter d'accéder au répertoire de test
+            cd "$test_dir" 2>/dev/null || {
+                log_result "${RED}Impossible d'accéder au répertoire de test. Tests de performance limités.${NC}"
                 local metrics=(
                     "Taille totale:$total_size"
                     "Espace utilisé:$used_space"
@@ -641,55 +661,58 @@ benchmark_disk() {
                     "Vitesse de lecture:N/A"
                 )
                 format_table "Résultats Disque" "${metrics[@]}"
-                return 1
+                return 0
             }
             
-            # Test avec dd au lieu de sysbench pour plus de compatibilité
+            # Test avec dd - fichier plus petit (50M au lieu de 100M) pour éviter les problèmes d'espace
             log_result "  Exécution du test d'écriture..."
-            local start_time=$(date +%s.%N)
-            dd if=/dev/zero of=./test_file bs=1M count=100 2>/dev/null || log_result "${RED}Erreur lors du test d'écriture${NC}"
-            local end_time=$(date +%s.%N)
+            local test_file="${test_dir}/test_file"
             
-            # Calcul de la vitesse d'écriture
-            if [[ $? -eq 0 ]] && [[ -f "./test_file" ]]; then
-                local time_diff=$(echo "$end_time - $start_time" | bc)
-                if (( $(echo "$time_diff > 0" | bc -l) )); then
-                    write_speed=$(echo "scale=2; 100 / $time_diff" | bc)
+            # Test d'écriture avec taille réduite et options de sécurité
+            local start_time=$(date +%s)
+            dd if=/dev/zero of="$test_file" bs=512k count=100 2>/dev/null
+            local status_write=$?
+            local end_time=$(date +%s)
+            local time_diff=$((end_time - start_time))
+            
+            # Si le test d'écriture a réussi
+            if [[ $status_write -eq 0 ]] && [[ -f "$test_file" ]]; then
+                if [[ $time_diff -gt 0 ]]; then
+                    write_speed=$(echo "scale=2; 50 / $time_diff" | bc -l 2>/dev/null || echo "0")
+                else
+                    write_speed="50.00"  # Si trop rapide pour être mesuré
                 fi
                 
                 # Test de lecture
                 log_result "  Exécution du test de lecture..."
-                local start_time=$(date +%s.%N)
-                dd if=./test_file of=/dev/null bs=1M 2>/dev/null || log_result "${RED}Erreur lors du test de lecture${NC}"
-                local end_time=$(date +%s.%N)
+                local start_time=$(date +%s)
+                dd if="$test_file" of=/dev/null bs=512k 2>/dev/null
+                local status_read=$?
+                local end_time=$(date +%s)
+                local time_diff=$((end_time - start_time))
                 
-                # Calcul de la vitesse de lecture
-                if [[ $? -eq 0 ]]; then
-                    local time_diff=$(echo "$end_time - $start_time" | bc)
-                    if (( $(echo "$time_diff > 0" | bc -l) )); then
-                        read_speed=$(echo "scale=2; 100 / $time_diff" | bc)
+                # Si le test de lecture a réussi
+                if [[ $status_read -eq 0 ]]; then
+                    if [[ $time_diff -gt 0 ]]; then
+                        read_speed=$(echo "scale=2; 50 / $time_diff" | bc -l 2>/dev/null || echo "0")
+                    else
+                        read_speed="50.00"  # Si trop rapide pour être mesuré
                     fi
+                else
+                    log_result "${RED}Le test de lecture a échoué.${NC}"
                 fi
-            fi
-            
-            # Tenter un test simple pour les IOPS (opérations par seconde)
-            if command -v fio &>/dev/null; then
-                log_result "  Exécution du test IOPS avec fio..."
-                fio --name=test --filename=./test_file_iops --direct=1 --rw=randrw --bs=4k --size=10M --numjobs=1 --runtime=10 --group_reporting --output-format=terse > ./fio_results.txt 2>/dev/null
-                
-                if [[ -f "./fio_results.txt" ]]; then
-                    write_iops=$(grep -o "iops=[0-9.]*" ./fio_results.txt | grep -o "[0-9.]*" | head -1)
-                    read_iops=$(grep -o "iops=[0-9.]*" ./fio_results.txt | grep -o "[0-9.]*" | tail -1)
-                    [ -z "$write_iops" ] && write_iops=0
-                    [ -z "$read_iops" ] && read_iops=0
-                fi
+            else
+                log_result "${RED}Le test d'écriture a échoué.${NC}"
             fi
             
             # Retourner au répertoire original
-            cd "$current_dir"
+            cd "$current_dir" 2>/dev/null
             
-            # Nettoyage
-            rm -rf "$test_dir" 2>/dev/null
+            # Nettoyage sécurisé
+            if [[ "$test_dir" != "." ]]; then
+                rm -f "${test_dir}/test_file" 2>/dev/null
+                rmdir "$test_dir" 2>/dev/null
+            fi
             ;;
     esac
     
@@ -709,14 +732,6 @@ benchmark_disk() {
             "Vitesse d'écriture:$(printf "%.2f MB/s" "$write_speed")"
             "Vitesse de lecture:$(printf "%.2f MB/s" "$read_speed")"
         )
-        
-        # Ajouter les IOPS seulement si nous avons pu les mesurer
-        if (( $(echo "$write_iops > 0" | bc -l) )) || (( $(echo "$read_iops > 0" | bc -l) )); then
-            metrics+=(
-                "IOPS en écriture:$(printf "%.2f" "$write_iops")"
-                "IOPS en lecture:$(printf "%.2f" "$read_iops")"
-            )
-        fi
     fi
     
     format_table "Résultats Disque" "${metrics[@]}"
@@ -1374,7 +1389,7 @@ show_dialog_menu() {
             echo -e "${YELLOW}Le package 'dialog' n'est pas installé. Utilisation de l'interface alternative.${NC}"
         elif ! [ -t 0 ] || ! [ -t 1 ] || ! [ -t 2 ]; then
             echo -e "${YELLOW}L'interface dialog nécessite un terminal interactif.${NC}"
-            echo -e "${YELLOW}Utilisez './rpi_benchmark.sh' sans pipe ni redirection pour dialog.${NC}"
+            echo -e "${YELLOW}Utilisez './rpi_benchmark.sh --dialog' sans pipe ni redirection.${NC}"
         fi
         
         # Interface améliorée si dialog n'est pas disponible ou ne peut pas être utilisé
