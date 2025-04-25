@@ -735,6 +735,131 @@ benchmark_disk() {
     log_result "${GREEN}Benchmark disque terminé${NC}"
 }
 
+# Fonction pour le benchmark réseau
+benchmark_network() {
+    log_result "\n${BLUE}=== BENCHMARK RÉSEAU ===${NC}"
+    
+    # Variables par défaut
+    local avg_ping=0
+    local download_speed=0
+    local upload_speed=0
+    
+    # Test de ping simple vers Google DNS et Cloudflare
+    log_result "${YELLOW}Test de latence réseau...${NC}"
+    
+    # Vérifier que ping est disponible
+    if command -v ping &>/dev/null; then
+        local ping_servers=("8.8.8.8" "1.1.1.1")
+        local total_ping=0
+        local ping_count=0
+        
+        for server in "${ping_servers[@]}"; do
+            log_result "  Test ping vers $server..."
+            
+            # Essayer ping avec plus de paquets pour une meilleure précision
+            local ping_cmd="ping -c 5 $server"
+            local ping_result=""
+            
+            # Exécution du ping avec gestion d'erreur
+            ping_result=$($ping_cmd 2>/dev/null | grep -i "avg\|moyenne" | grep -o "[0-9.]\+/[0-9.]\+/[0-9.]\+" | cut -d/ -f2)
+            
+            if [ -n "$ping_result" ] && [ "$ping_result" != "0" ]; then
+                log_result "    Latence: ${ping_result} ms"
+                # Addition simple pour éviter les erreurs avec bc
+                total_ping=$(echo "$total_ping + $ping_result" | bc 2>/dev/null || echo "$total_ping")
+                ping_count=$((ping_count + 1))
+            else
+                log_result "    ${RED}Échec du test ping vers $server${NC}"
+            fi
+        done
+        
+        # Calcul de la moyenne (avec protection)
+        if [ $ping_count -gt 0 ]; then
+            avg_ping=$(echo "scale=2; $total_ping / $ping_count" | bc 2>/dev/null || echo "0")
+            log_result "  Latence moyenne: ${avg_ping} ms"
+        else
+            log_result "  ${RED}Impossible de mesurer la latence${NC}"
+        fi
+    else
+        log_result "  ${RED}Commande ping non disponible${NC}"
+    fi
+    
+    # Test de débit amélioré avec speedtest-cli
+    log_result "${YELLOW}Test de débit réseau avancé...${NC}"
+    
+    # Vérifier si speedtest-cli est disponible
+    if command -v speedtest-cli &>/dev/null; then
+        log_result "  Utilisation de speedtest-cli pour une mesure précise..."
+        
+        # Exécuter speedtest-cli directement
+        local test_output=$(mktemp)
+        
+        # Exécuter speedtest-cli en mode simple
+        speedtest-cli --simple > "$test_output" 2>&1
+        local speedtest_status=$?
+        
+        # Si speedtest-cli réussit, extraire les résultats
+        if [ $speedtest_status -eq 0 ] && [ -s "$test_output" ]; then
+            download_speed=$(grep -i "Download" "$test_output" | awk '{print $2}' || echo "0")
+            upload_speed=$(grep -i "Upload" "$test_output" | awk '{print $2}' || echo "0")
+            local ping_result=$(grep -i "Ping" "$test_output" | awk '{print $2}' || echo "0")
+            
+            if [ -n "$download_speed" ] && [ "$download_speed" != "0" ]; then
+                log_result "  Débit descendant: ${download_speed} Mbps"
+                log_result "  Débit montant: ${upload_speed} Mbps"
+                log_result "  Ping (speedtest-cli): ${ping_result} ms"
+            else
+                log_result "  ${RED}Échec du test speedtest-cli (résultats vides)${NC}"
+                log_result "  Utilisation de la méthode alternative..."
+                speedtest_failed=true
+            fi
+        else
+            log_result "  ${RED}Échec du test speedtest-cli (code: $speedtest_status)${NC}"
+            log_result "  Contenu de la sortie d'erreur:"
+            cat "$test_output" | while read -r line; do
+                log_result "    $line"
+            done
+            log_result "  Utilisation de la méthode alternative..."
+            speedtest_failed=true
+        fi
+        
+        rm -f "$test_output" 2>/dev/null
+    else
+        log_result "  ${YELLOW}speedtest-cli non disponible, utilisation de la méthode alternative...${NC}"
+        speedtest_failed=true
+    fi
+    
+    # Si speedtest-cli a échoué ou n'est pas disponible, utiliser la méthode manuelle
+    if [ "${speedtest_failed:-true}" = true ]; then
+        # Fichiers de test de différentes tailles (version avec HTTPS et HTTP pour plus de compatibilité)
+        local test_files=(
+            "http://speedtest.tele2.net/100KB.zip:100"  # Très fiable et spécifiquement conçu pour les tests
+            "http://speedtest.tele2.net/10MB.zip:10000" # Test optionnel pour une meilleure précision
+        )
+        
+        # Effectuer les tests de téléchargement
+        download_speed=$(test_download_speed "${test_files[@]}")
+    fi
+    
+    # Créer le tableau des résultats
+    if [ -n "$upload_speed" ] && [ "$upload_speed" != "0" ]; then
+        local metrics=(
+            "Latence moyenne:$(printf "%.2f ms" "$avg_ping")"
+            "Débit descendant:$(printf "%s Mbps" "$download_speed")"
+            "Débit montant:$(printf "%s Mbps" "$upload_speed")"
+        )
+    else
+        local metrics=(
+            "Latence moyenne:$(printf "%.2f ms" "$avg_ping")"
+            "Débit descendant:$(printf "%s Mbps" "$download_speed")"
+        )
+    fi
+    
+    format_table "Résultats Réseau" "${metrics[@]}"
+    
+    log_result "${GREEN}Benchmark réseau terminé${NC}"
+}
+
 # Fonction pour tester la vitesse de téléchargement
 test_download_speed() {
     local test_files=("$@")
@@ -743,55 +868,41 @@ test_download_speed() {
     
     # Tester les téléchargements avec curl ou wget
     if command -v curl &>/dev/null || command -v wget &>/dev/null; then
-        # Tenter de télécharger chaque fichier
         for test_file_info in "${test_files[@]}"; do
-            # Extraire l'URL et la taille
             local url=$(echo "$test_file_info" | cut -d: -f1)
             local size_kb=$(echo "$test_file_info" | cut -d: -f2)
-            
-            # Créer un nom de fichier temporaire unique
             local file_name=$(basename "$url")
-            local output_file="/tmp/speedtest_${file_name}_$$"
+            local output_file="/tmp/${file_name}_$$"
             
-            # Afficher le message (séparé de la logique de calcul)
-            log_result "  Test avec fichier de ${size_kb} KB..."
-            
-            # Variables pour mesurer le temps
-            local start_time=0
-            local end_time=0
-            local time_diff=0
-            local status=1
+            log_result "  Test avec fichier de ${size_kb}KB..."
             
             # Télécharger avec curl ou wget
             if command -v curl &>/dev/null; then
-                start_time=$(date +%s)
+                # Utiliser seulement date +%s pour éviter les erreurs avec %s.%N
+                local start_time=$(date +%s)
                 curl -s -o "$output_file" "$url" 2>/dev/null
-                status=$?
-                end_time=$(date +%s)
+                local status=$?
+                local end_time=$(date +%s)
+                local time_diff=$((end_time - start_time))
             elif command -v wget &>/dev/null; then
-                start_time=$(date +%s)
+                local start_time=$(date +%s)
                 wget -q -O "$output_file" "$url" 2>/dev/null
-                status=$?
-                end_time=$(date +%s)
-            fi
-            
-            # Calculer le temps écoulé (protection contre la division par zéro)
-            time_diff=$((end_time - start_time))
-            if [ "$time_diff" -le 0 ]; then
-                time_diff=1
+                local status=$?
+                local end_time=$(date +%s)
+                local time_diff=$((end_time - start_time))
             fi
             
             # Nettoyer le fichier temporaire
             rm -f "$output_file" 2>/dev/null
             
             # Calculer la vitesse si le téléchargement a réussi
-            if [ $status -eq 0 ]; then
-                # Convertir KB en bits puis en Mbps (très simplifié mais robuste)
-                local size_bits=$((size_kb * 8))
-                local speed_mbps=$((size_bits / time_diff / 1000))
+            if [ $status -eq 0 ] && [ -n "$time_diff" ] && [ "$time_diff" -gt 0 ]; then
+                # Calcul simple pour éviter les erreurs
+                local speed_kbps=$((size_kb * 8 / time_diff))
+                local speed_mbps=$((speed_kbps / 1000))
                 
-                # Protection contre les valeurs nulles
-                if [ "$speed_mbps" -le 0 ]; then
+                # Éviter les résultats nuls
+                if [ "$speed_mbps" -eq 0 ]; then
                     speed_mbps=1
                 fi
                 
@@ -799,22 +910,22 @@ test_download_speed() {
                 total_speed=$((total_speed + speed_mbps))
                 speed_count=$((speed_count + 1))
             else
-                log_result "    ${RED}Échec du téléchargement du fichier${NC}"
+                log_result "    ${RED}Échec du test ou calcul impossible${NC}"
             fi
         done
         
-        # Calculer la vitesse moyenne
+        # Calculer la moyenne des vitesses
         if [ $speed_count -gt 0 ]; then
             local avg_speed=$((total_speed / speed_count))
             log_result "  Débit descendant moyen: ${avg_speed} Mbps"
             echo "$avg_speed"
         else
-            log_result "  ${YELLOW}Aucun test de téléchargement réussi, utilisation d'une valeur par défaut${NC}"
-            echo "5"
+            log_result "  ${YELLOW}Impossible de calculer précisément le débit, utilisation d'une valeur par défaut${NC}"
+            echo "5"  # Valeur par défaut
         fi
     else
         log_result "  ${RED}curl et wget non disponibles, impossible de tester le débit${NC}"
-        echo "5"
+        echo "5"  # Valeur par défaut
     fi
 }
 
@@ -1697,128 +1808,4 @@ show_summary() {
     log_result "${YELLOW}Les résultats détaillés ont été enregistrés dans: ${LOG_FILE}${NC}"
     log_result "${YELLOW}Graphiques générés dans : ${RESULTS_DIR}/benchmark_charts.html${NC}"
     log_result "${YELLOW}Ouvrez ce fichier dans votre navigateur pour voir les graphiques.${NC}"
-}
-
-# Fonction pour le benchmark réseau
-benchmark_network() {
-    log_result "\n${BLUE}=== BENCHMARK RÉSEAU ===${NC}"
-    
-    # Variables par défaut
-    local avg_ping=0
-    local download_speed=0
-    local upload_speed=0
-    
-    # Test de ping simple vers Google DNS et Cloudflare
-    log_result "${YELLOW}Test de latence réseau...${NC}"
-    
-    # Vérifier que ping est disponible
-    if command -v ping &>/dev/null; then
-        local ping_servers=("8.8.8.8" "1.1.1.1")
-        local total_ping=0
-        local ping_count=0
-        
-        for server in "${ping_servers[@]}"; do
-            log_result "  Test ping vers $server..."
-            
-            # Essayer ping avec plus de paquets pour une meilleure précision
-            local ping_cmd="ping -c 5 $server"
-            local ping_result=""
-            
-            # Exécution du ping avec gestion d'erreur
-            ping_result=$($ping_cmd 2>/dev/null | grep -i "avg\|moyenne" | grep -o "[0-9.]\+/[0-9.]\+/[0-9.]\+" | cut -d/ -f2)
-            
-            if [ -n "$ping_result" ] && [ "$ping_result" != "0" ]; then
-                log_result "    Latence: ${ping_result} ms"
-                # Addition simple pour éviter les erreurs avec bc
-                total_ping=$(echo "$total_ping + $ping_result" | bc 2>/dev/null || echo "$total_ping")
-                ping_count=$((ping_count + 1))
-            else
-                log_result "    ${RED}Échec du test ping vers $server${NC}"
-            fi
-        done
-        
-        # Calcul de la moyenne (avec protection)
-        if [ $ping_count -gt 0 ]; then
-            avg_ping=$(echo "scale=2; $total_ping / $ping_count" | bc 2>/dev/null || echo "0")
-            log_result "  Latence moyenne: ${avg_ping} ms"
-        else
-            log_result "  ${RED}Impossible de mesurer la latence${NC}"
-        fi
-    else
-        log_result "  ${RED}Commande ping non disponible${NC}"
-    fi
-    
-    # Test de débit avec speedtest-cli
-    log_result "${YELLOW}Test de débit réseau avancé...${NC}"
-    
-    # Méthode 1: Utiliser speedtest-cli si disponible
-    if command -v speedtest-cli &>/dev/null; then
-        log_result "  Utilisation de speedtest-cli pour une mesure précise..."
-        
-        # Créer un fichier temporaire pour la sortie
-        local test_output=$(mktemp)
-        
-        # Exécuter speedtest-cli avec un timeout pour éviter les blocages
-        timeout 60 speedtest-cli --simple > "$test_output" 2>&1
-        local speedtest_status=$?
-        
-        # Vérifier si le test a réussi et extraire les résultats
-        if [ $speedtest_status -eq 0 ] && [ -s "$test_output" ]; then
-            download_speed=$(grep -i "Download" "$test_output" | awk '{print $2}' || echo "0")
-            upload_speed=$(grep -i "Upload" "$test_output" | awk '{print $2}' || echo "0")
-            local ping_result=$(grep -i "Ping" "$test_output" | awk '{print $2}' || echo "0")
-            
-            # Vérifier si nous avons obtenu des valeurs valides
-            if [ -n "$download_speed" ] && [ "$download_speed" != "0" ]; then
-                log_result "  Débit descendant: ${download_speed} Mbps"
-                log_result "  Débit montant: ${upload_speed} Mbps"
-                log_result "  Ping (speedtest-cli): ${ping_result} ms"
-                speedtest_failed=false
-            else
-                log_result "  ${RED}Résultats de speedtest-cli non valides${NC}"
-                speedtest_failed=true
-            fi
-        else
-            log_result "  ${RED}Échec de speedtest-cli (code: $speedtest_status)${NC}"
-            speedtest_failed=true
-        fi
-        
-        # Nettoyer
-        rm -f "$test_output" 2>/dev/null
-    else
-        log_result "  ${YELLOW}speedtest-cli non disponible${NC}"
-        speedtest_failed=true
-    fi
-    
-    # Méthode 2: Utiliser une méthode alternative si speedtest-cli a échoué
-    if [ "${speedtest_failed:-true}" = true ]; then
-        log_result "  ${YELLOW}Utilisation de la méthode alternative...${NC}"
-        
-        # Fichiers de test (serveurs dédiés aux tests de vitesse)
-        local test_files=(
-            "http://speedtest.ftp.otenet.gr/files/test100k.db:100"   # Serveur 1: 100KB
-            "http://speedtest.tele2.net/100KB.zip:100"              # Serveur 2: 100KB
-        )
-        
-        # Effectuer les tests de téléchargement
-        download_speed=$(test_download_speed "${test_files[@]}")
-    fi
-    
-    # Créer le tableau des résultats
-    if [ -n "$upload_speed" ] && [ "$upload_speed" != "0" ]; then
-        local metrics=(
-            "Latence moyenne:$(printf "%.2f ms" "$avg_ping")"
-            "Débit descendant:$(printf "%s Mbps" "$download_speed")"
-            "Débit montant:$(printf "%s Mbps" "$upload_speed")"
-        )
-    else
-        local metrics=(
-            "Latence moyenne:$(printf "%.2f ms" "$avg_ping")"
-            "Débit descendant:$(printf "%s Mbps" "$download_speed")"
-        )
-    fi
-    
-    format_table "Résultats Réseau" "${metrics[@]}"
-    
-    log_result "${GREEN}Benchmark réseau terminé${NC}"
 }
