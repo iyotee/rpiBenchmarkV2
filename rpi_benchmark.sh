@@ -166,7 +166,7 @@ show_header() {
     echo ""
     echo -e "${BLUE}${BOLD}╔═════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}${BOLD}║                                                                 ║${NC}"
-    echo -e "${BLUE}${BOLD}║  ${WHITE}${BOLD}  RPi BENCHMARK v2.0 - ANALYSE COMPLÈTE DES PERFORMANCES       ${NC}${BLUE}${BOLD}  ║${NC}"
+    echo -e "${BLUE}${BOLD}║  ${WHITE}${BOLD}  RPi BENCHMARK v2.0 - ANALYSE COMPLÈTE DES PERFORMANCES       ${NC}${BLUE}${BOLD}║${NC}"
     echo -e "${BLUE}${BOLD}║                                                                 ║${NC}"
     echo -e "${BLUE}${BOLD}╚═════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
@@ -1383,6 +1383,13 @@ generate_charts() {
     local disk_write=$(grep -A 20 "Résultats Disque" "$LOG_FILE" | grep -i "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "0")
     local disk_read=$(grep -A 20 "Résultats Disque" "$LOG_FILE" | grep -i "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "0")
     
+    # Récupérer les données d'espace disque
+    local disk_total=$(df -h / | tail -n 1 | awk '{print $2}' | sed 's/[^0-9.]//g')
+    local disk_used=$(df -h / | tail -n 1 | awk '{print $3}' | sed 's/[^0-9.]//g')
+    local disk_free=$(df -h / | tail -n 1 | awk '{print $4}' | sed 's/[^0-9.]//g')
+    local disk_used_percent=$(df -h / | tail -n 1 | awk '{print $5}' | sed 's/%//g')
+    local disk_free_percent=$((100 - disk_used_percent))
+    
     # Vérifier les données de réseau
     local network_download=$(grep -A 20 "Résultats Réseau" "$LOG_FILE" | grep -i "Débit descendant" | head -1 | grep -o "[0-9.]\+" || echo "0") 
     local network_upload=$(grep -A 20 "Résultats Réseau" "$LOG_FILE" | grep -i "Débit montant" | head -1 | grep -o "[0-9.]\+" || echo "0")
@@ -1400,6 +1407,11 @@ generate_charts() {
         echo "Memory free: $memory_free"
         echo "Disk write: $disk_write"
         echo "Disk read: $disk_read"
+        echo "Disk total: $disk_total"
+        echo "Disk used: $disk_used"
+        echo "Disk free: $disk_free"
+        echo "Disk used percent: $disk_used_percent%"
+        echo "Disk free percent: $disk_free_percent%"
         echo "Network download: $network_download"
         echo "Network upload: $network_upload"
         echo "Network ping: $network_ping"
@@ -1513,6 +1525,9 @@ generate_charts() {
             <div class="system-detail">
                 <span class="detail-label">Mémoire:</span> $(free -h | grep "Mem:" | awk '{print $2}' || echo "N/A")
             </div>
+            <div class="system-detail">
+                <span class="detail-label">Disque:</span> $(df -h / | tail -n 1 | awk '{print $2}' || echo "N/A")
+            </div>
         </div>
     </div>
     
@@ -1540,6 +1555,10 @@ generate_charts() {
         <div class="chart-container">
             <div class="chart-title">Utilisation Mémoire</div>
             <canvas id="memUsageChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <div class="chart-title">Utilisation Disque</div>
+            <canvas id="diskUsageChart"></canvas>
         </div>
     </div>
     
@@ -1570,7 +1589,12 @@ generate_charts() {
             },
             disk: {
                 writeSpeed: ${disk_write},
-                readSpeed: ${disk_read}
+                readSpeed: ${disk_read},
+                total: ${disk_total},
+                used: ${disk_used},
+                free: ${disk_free},
+                usedPercent: ${disk_used_percent},
+                freePercent: ${disk_free_percent}
             },
             network: {
                 downloadSpeed: ${network_download},
@@ -1717,6 +1741,43 @@ EOF
                                 const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                 const percentage = ((value / total) * 100).toFixed(1);
                                 return `${label}: ${value} MB (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Graphique Utilisation Disque
+        new Chart(document.getElementById('diskUsageChart'), {
+            type: 'pie',
+            data: {
+                labels: ['Utilisé', 'Libre'],
+                datasets: [{
+                    data: [data.disk.usedPercent, data.disk.freePercent],
+                    backgroundColor: [
+                        'rgba(255, 159, 64, 0.7)',
+                        'rgba(75, 192, 192, 0.7)'
+                    ],
+                    borderColor: [
+                        'rgba(255, 159, 64, 1)',
+                        'rgba(75, 192, 192, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                return `${label}: ${value}% (${label === 'Utilisé' ? data.disk.used : data.disk.free} GB)`;
                             }
                         }
                     }
@@ -2135,17 +2196,17 @@ show_menu() {
         # Menu stylisé moderne
         echo -e "${CYAN}${BOLD}╔══════════════════════════ MENU PRINCIPAL ═══════════════════════════╗${NC}"
         echo -e "${CYAN}${BOLD}║                                                                     ║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_INFO}   ${WHITE}1.${NC}   ${CYAN}Afficher les informations système${NC}                           ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT}   ${WHITE}2.${NC}   ${LIME}Exécuter tous les benchmarks${NC}                                ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CPU}    ${WHITE}3.${NC}    ${CYAN}Benchmark CPU${NC}                                                ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT}   ${WHITE}4.${NC}   ${CYAN}Benchmark Threads${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_RAM}    ${WHITE}5.${NC}    ${MAGENTA}Benchmark Mémoire${NC}                                           ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_DISK}   ${WHITE}6.${NC}   ${YELLOW}Benchmark Disque${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_NETWORK}    ${WHITE}7.${NC}    ${BLUE}Benchmark Réseau${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_TEMP}   ${WHITE}8.${NC}   ${RED}Stress Test${NC}                                                ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CHART}  ${WHITE}9.${NC}  ${GREEN}Exporter les résultats (CSV et JSON)${NC}                     ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CLOCK}  ${WHITE}10.${NC} ${PURPLE}Planifier les benchmarks${NC}                                 ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CROSS}  ${WHITE}11.${NC} ${RED}Quitter${NC}                                                    ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_INFO} ${WHITE}1.${NC} ${CYAN}Afficher les informations système${NC}                           ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT} ${WHITE}2.${NC} ${LIME}Exécuter tous les benchmarks${NC}                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CPU} ${WHITE}3.${NC} ${CYAN}Benchmark CPU${NC}                                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT} ${WHITE}4.${NC} ${CYAN}Benchmark Threads${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_RAM} ${WHITE}5.${NC} ${MAGENTA}Benchmark Mémoire${NC}                                           ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_DISK} ${WHITE}6.${NC} ${YELLOW}Benchmark Disque${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_NETWORK} ${WHITE}7.${NC} ${BLUE}Benchmark Réseau${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_TEMP} ${WHITE}8.${NC} ${RED}Stress Test${NC}                                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CHART} ${WHITE}9.${NC} ${GREEN}Exporter les résultats (CSV et JSON)${NC}                     ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CLOCK} ${WHITE}10.${NC} ${PURPLE}Planifier les benchmarks${NC}                                 ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CROSS} ${WHITE}11.${NC} ${RED}Quitter${NC}                                                    ${CYAN}${BOLD}║${NC}"
         echo -e "${CYAN}${BOLD}║                                                                     ║${NC}"
         echo -e "${CYAN}${BOLD}╚═════════════════════════════════════════════════════════════════════╝${NC}"
         echo ""
@@ -2672,9 +2733,24 @@ get_storage_info() {
     local disk_write=$(get_last_benchmark_value "disk_write")
     local disk_type=$(lsblk -o NAME,TYPE,MODEL | grep "disk" | head -1 | awk '{print $3}' || echo "N/A")
     
+    # Calculer l'espace libre en pourcentage
+    local root_percent_numeric=$(echo $root_percent | sed 's/%//g')
+    local free_percent=$((100 - root_percent_numeric))
+    
+    # Enregistrer ces métriques pour les graphiques
+    local disk_total_num=$(echo $root_size | sed 's/[^0-9.]//g')
+    local disk_used_num=$(echo $root_used | sed 's/[^0-9.]//g')
+    local disk_free_num=$(echo $root_free | sed 's/[^0-9.]//g')
+    
+    save_metric_to_db "disk_total" "$disk_total_num"
+    save_metric_to_db "disk_used" "$disk_used_num"
+    save_metric_to_db "disk_free" "$disk_free_num"
+    save_metric_to_db "disk_used_percent" "$root_percent_numeric"
+    save_metric_to_db "disk_free_percent" "$free_percent"
+    
     echo "Espace disque total:$root_size"
     echo "Espace utilisé:$root_used ($root_percent)"
-    echo "Espace libre:$root_free"
+    echo "Espace libre:$root_free ($free_percent%)"
     
     if [ "$disk_type" != "N/A" ]; then
         echo "Type de disque:$disk_type"
@@ -2687,6 +2763,21 @@ get_storage_info() {
     if [ -n "$disk_write" ]; then
         echo "Vitesse écriture:$disk_write MB/s"
     fi
+    
+    # Ajouter ces données au fichier de log pour les retrouver facilement
+    {
+        echo "DISQUE - MÉTRIQUES CLÉS:"
+        echo "Espace disque total: $root_size"
+        echo "Espace utilisé: $root_used ($root_percent)"
+        echo "Espace libre: $root_free ($free_percent%)"
+        echo "Type de disque: $disk_type"
+        if [ -n "$disk_read" ]; then
+            echo "Vitesse lecture: $disk_read MB/s"
+        fi
+        if [ -n "$disk_write" ]; then
+            echo "Vitesse écriture: $disk_write MB/s"
+        fi
+    } >> "$LOG_FILE"
 }
 
 # Fonction pour obtenir des informations résumées sur le réseau
