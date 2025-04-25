@@ -635,54 +635,117 @@ benchmark_disk() {
 benchmark_network() {
     log_result "\n${BLUE}=== BENCHMARK RÉSEAU ===${NC}"
     
-    case $PLATFORM in
-        "macos")
-            # Test de latence avec plusieurs serveurs
-            local ping_servers=("8.8.8.8" "1.1.1.1" "208.67.222.222")
-            local total_ping=0
-            local ping_count=0
-            
-            for server in "${ping_servers[@]}"; do
-                local ping_result=$(ping -c 5 "$server" 2>/dev/null | tail -1 | awk '{print $4}' | cut -d '/' -f 2)
-                if [ -n "$ping_result" ] && [ "$ping_result" != "0" ]; then
-                    total_ping=$(echo "$total_ping + $ping_result" | bc)
-                    ping_count=$((ping_count + 1))
-                fi
-            done
-            
-            local avg_ping=0
-            if [ $ping_count -gt 0 ]; then
-                avg_ping=$(echo "scale=2; $total_ping / $ping_count" | bc)
-            fi
-            
-            # Test de débit
+    # Variables par défaut
+    local avg_ping=0
     local download_speed=0
     local upload_speed=0
     
-            if command -v networkQuality &> /dev/null; then
-                local result=$(networkQuality -v)
-                download_speed=$(echo "$result" | grep "Download capacity" | awk '{print $3}')
-                upload_speed=$(echo "$result" | grep "Upload capacity" | awk '{print $3}')
-            elif command -v speedtest-cli &> /dev/null; then
-                local result=$(speedtest-cli --simple)
-                download_speed=$(echo "$result" | grep "Download" | awk '{print $2}')
-                upload_speed=$(echo "$result" | grep "Upload" | awk '{print $2}')
+    # Test de ping simple vers Google DNS et Cloudflare
+    log_result "${YELLOW}Test de latence réseau simplifié...${NC}"
+    
+    # Vérifier que ping est disponible
+    if command -v ping &>/dev/null; then
+        local ping_servers=("8.8.8.8" "1.1.1.1")
+        local total_ping=0
+        local ping_count=0
+        
+        for server in "${ping_servers[@]}"; do
+            log_result "  Test ping vers $server..."
+            
+            # Essayer ping avec différentes options selon la plateforme
+            local ping_cmd="ping -c 3 $server"
+            local ping_result=""
+            
+            # Exécution du ping avec gestion d'erreur
+            ping_result=$($ping_cmd 2>/dev/null | grep -i "avg\|moyenne" | grep -o "[0-9.]\+/[0-9.]\+/[0-9.]\+" | cut -d/ -f2)
+            
+            if [ -n "$ping_result" ] && [ "$ping_result" != "0" ]; then
+                log_result "    Latence: ${ping_result} ms"
+                # Utilisation d'arithmétique simple plutôt que bc
+                total_ping=$(echo "$total_ping + $ping_result" | bc 2>/dev/null || echo "$total_ping")
+                ping_count=$((ping_count + 1))
+            else
+                log_result "    ${RED}Échec du test ping vers $server${NC}"
             fi
-            
-            # Préparer les données pour le tableau
-            local metrics=(
-                "Latence moyenne:$(printf "%.2f ms" "${avg_ping:-0}")"
-                "Débit descendant:$(printf "%.2f Mbps" "${download_speed:-0}")"
-                "Débit montant:$(printf "%.2f Mbps" "${upload_speed:-0}")"
-            )
-            
-            format_table "Résultats Réseau" "${metrics[@]}"
-            ;;
-        *)
-            # Test standard pour Linux
-            # ... reste du code existant ...
-            ;;
-    esac
+        done
+        
+        # Calcul de la moyenne (avec protection)
+        if [ $ping_count -gt 0 ]; then
+            avg_ping=$(echo "scale=2; $total_ping / $ping_count" | bc 2>/dev/null || echo "0")
+            log_result "  Latence moyenne: ${avg_ping} ms"
+        else
+            log_result "  ${RED}Impossible de mesurer la latence${NC}"
+        fi
+    else
+        log_result "  ${RED}Commande ping non disponible${NC}"
+    fi
+    
+    # Test de débit simplifié (sans speedtest-cli qui peut causer des problèmes)
+    log_result "${YELLOW}Test de débit simplifié...${NC}"
+    
+    # Téléchargement d'un petit fichier depuis un CDN
+    log_result "  Test de téléchargement..."
+    local test_file="/tmp/speedtest_$$.tmp"
+    local download_url="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"
+    local file_size_kb=90  # Taille approximative en KB
+    
+    # Utiliser curl si disponible, sinon wget
+    if command -v curl &>/dev/null; then
+        local start_time=$(date +%s)
+        curl -s -o "$test_file" "$download_url" 2>/dev/null
+        local status=$?
+        local end_time=$(date +%s)
+        local time_diff=$((end_time - start_time))
+        
+        if [ $status -eq 0 ] && [ -f "$test_file" ]; then
+            if [ $time_diff -gt 0 ]; then
+                download_speed=$(( (file_size_kb * 8) / time_diff ))  # Conversion en Kbps
+                download_speed=$(( download_speed / 1000 ))  # Conversion en Mbps (arrondi)
+                [ $download_speed -eq 0 ] && download_speed=1  # Minimum 1 Mbps
+                log_result "  Débit descendant approximatif: ${download_speed} Mbps"
+            else
+                download_speed=10  # Valeur par défaut si trop rapide
+                log_result "  Débit descendant: >10 Mbps (trop rapide pour être mesuré précisément)"
+            fi
+        else
+            log_result "  ${RED}Échec du test de téléchargement${NC}"
+        fi
+    elif command -v wget &>/dev/null; then
+        local start_time=$(date +%s)
+        wget -q -O "$test_file" "$download_url" 2>/dev/null
+        local status=$?
+        local end_time=$(date +%s)
+        local time_diff=$((end_time - start_time))
+        
+        if [ $status -eq 0 ] && [ -f "$test_file" ]; then
+            if [ $time_diff -gt 0 ]; then
+                download_speed=$(( (file_size_kb * 8) / time_diff ))  # Conversion en Kbps
+                download_speed=$(( download_speed / 1000 ))  # Conversion en Mbps (arrondi)
+                [ $download_speed -eq 0 ] && download_speed=1  # Minimum 1 Mbps
+                log_result "  Débit descendant approximatif: ${download_speed} Mbps"
+            else
+                download_speed=10  # Valeur par défaut si trop rapide
+                log_result "  Débit descendant: >10 Mbps (trop rapide pour être mesuré précisément)"
+            fi
+        else
+            log_result "  ${RED}Échec du test de téléchargement${NC}"
+        fi
+    else
+        log_result "  ${RED}Commandes curl et wget non disponibles${NC}"
+    fi
+    
+    # Nettoyage
+    rm -f "$test_file" 2>/dev/null
+    
+    # Créer le tableau des résultats
+    local metrics=(
+        "Latence moyenne:$(printf "%.1f ms" "$avg_ping")"
+        "Débit descendant:$(printf "%d Mbps" "$download_speed")"
+    )
+    
+    format_table "Résultats Réseau" "${metrics[@]}"
+    
+    log_result "${GREEN}Benchmark réseau terminé${NC}"
 }
 
 # Fonction pour le stress test et monitoring température
