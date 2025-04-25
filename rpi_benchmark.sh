@@ -554,187 +554,81 @@ benchmark_disk() {
     # S'assurer que le répertoire des résultats existe
     mkdir -p "$RESULTS_DIR" 2>/dev/null
     
-    # Variables communes
+    # Variables communes initialisées avec des valeurs par défaut
     local total_size="N/A"
     local used_space="N/A"
     local free_space="N/A"
     local write_speed=0
     local read_speed=0
-    local write_iops=0
-    local read_iops=0
-
-    # Obtenir les informations sur l'espace disque (commun à toutes les plateformes)
-    if df -h / &>/dev/null; then
-        local df_output=$(df -h / | awk 'NR==2 {print $2,$3,$4}')
-        total_size=$(echo "$df_output" | awk '{print $1}')
-        used_space=$(echo "$df_output" | awk '{print $2}')
-        free_space=$(echo "$df_output" | awk '{print $3}')
-    fi
     
-    case $PLATFORM in
-        "macos")
-            # Test de performance avec dd pour macOS
-            log_result "${YELLOW}Test de performance disque en cours...${NC}"
-            
-            # Créer un fichier temporaire dans un répertoire accessible
-            local temp_dir=$(mktemp -d)
-            local temp_file="$temp_dir/benchmark_file"
-            
-            # Test d'écriture avec dd
-            log_result "  Exécution du test d'écriture..."
-            local start_time=$(date +%s.%N)
-            dd if=/dev/zero of="$temp_file" bs=1M count=100 2>/dev/null || log_result "${RED}Erreur lors du test d'écriture${NC}"
-            local end_time=$(date +%s.%N)
-            
-            # Calcul de la vitesse d'écriture
-            if [[ $? -eq 0 ]]; then
-                local time_diff=$(echo "$end_time - $start_time" | bc)
-                if (( $(echo "$time_diff > 0" | bc -l) )); then
-                    write_speed=$(echo "scale=2; 100 / $time_diff" | bc)
-                fi
-            fi
-            
-            # Test de lecture avec dd
-            log_result "  Exécution du test de lecture..."
-            if [[ -f "$temp_file" ]]; then
-                local start_time=$(date +%s.%N)
-                dd if="$temp_file" of=/dev/null bs=1M 2>/dev/null || log_result "${RED}Erreur lors du test de lecture${NC}"
-                local end_time=$(date +%s.%N)
-                
-                # Calcul de la vitesse de lecture
-                if [[ $? -eq 0 ]]; then
-                    local time_diff=$(echo "$end_time - $start_time" | bc)
-                    if (( $(echo "$time_diff > 0" | bc -l) )); then
-                        read_speed=$(echo "scale=2; 100 / $time_diff" | bc)
-                    fi
-                fi
-            fi
-            
-            # Nettoyage
-            rm -f "$temp_file" 2>/dev/null
-            rmdir "$temp_dir" 2>/dev/null
-            ;;
-            
-        *)
-            # Méthode plus sûre pour Linux/Raspberry Pi
-            log_result "${YELLOW}Test de performance disque en cours...${NC}"
-            
-            # Vérifier si le répertoire /tmp est accessible
-            if ! [ -w "/tmp" ]; then
-                log_result "${RED}Le répertoire /tmp n'est pas accessible en écriture. Utilisation du répertoire courant.${NC}"
-                local test_dir="./disk_benchmark_$$"
-            else
-                local test_dir="/tmp/disk_benchmark_$$"
-            fi
-            
-            # Créer le répertoire de test
-            mkdir -p "$test_dir" 2>/dev/null || { 
-                log_result "${RED}Impossible de créer le répertoire temporaire. Utilisation du répertoire courant.${NC}"
-                test_dir="."
-            }
-            
-            # Vérifier que nous pouvons écrire dans le répertoire de test
-            if ! [ -w "$test_dir" ]; then
-                log_result "${RED}Le répertoire de test n'est pas accessible en écriture. Tests de performance limités.${NC}"
-                local metrics=(
-                    "Taille totale:$total_size"
-                    "Espace utilisé:$used_space"
-                    "Espace libre:$free_space"
-                    "Vitesse d'écriture:N/A"
-                    "Vitesse de lecture:N/A"
-                )
-                format_table "Résultats Disque" "${metrics[@]}"
-                return 0
-            fi
-            
-            # Mémoriser le répertoire courant
-            local current_dir=$(pwd)
-            
-            # Tenter d'accéder au répertoire de test
-            cd "$test_dir" 2>/dev/null || {
-                log_result "${RED}Impossible d'accéder au répertoire de test. Tests de performance limités.${NC}"
-                local metrics=(
-                    "Taille totale:$total_size"
-                    "Espace utilisé:$used_space"
-                    "Espace libre:$free_space"
-                    "Vitesse d'écriture:N/A"
-                    "Vitesse de lecture:N/A"
-                )
-                format_table "Résultats Disque" "${metrics[@]}"
-                return 0
-            }
-            
-            # Test avec dd - fichier plus petit (50M au lieu de 100M) pour éviter les problèmes d'espace
-            log_result "  Exécution du test d'écriture..."
-            local test_file="${test_dir}/test_file"
-            
-            # Test d'écriture avec taille réduite et options de sécurité
-            local start_time=$(date +%s)
-            dd if=/dev/zero of="$test_file" bs=512k count=100 2>/dev/null
-            local status_write=$?
-            local end_time=$(date +%s)
-            local time_diff=$((end_time - start_time))
-            
-            # Si le test d'écriture a réussi
-            if [[ $status_write -eq 0 ]] && [[ -f "$test_file" ]]; then
-                if [[ $time_diff -gt 0 ]]; then
-                    write_speed=$(echo "scale=2; 50 / $time_diff" | bc -l 2>/dev/null || echo "0")
-                else
-                    write_speed="50.00"  # Si trop rapide pour être mesuré
-                fi
-                
-                # Test de lecture
-                log_result "  Exécution du test de lecture..."
-                local start_time=$(date +%s)
-                dd if="$test_file" of=/dev/null bs=512k 2>/dev/null
-                local status_read=$?
-                local end_time=$(date +%s)
-                local time_diff=$((end_time - start_time))
-                
-                # Si le test de lecture a réussi
-                if [[ $status_read -eq 0 ]]; then
-                    if [[ $time_diff -gt 0 ]]; then
-                        read_speed=$(echo "scale=2; 50 / $time_diff" | bc -l 2>/dev/null || echo "0")
-                    else
-                        read_speed="50.00"  # Si trop rapide pour être mesuré
-                    fi
-                else
-                    log_result "${RED}Le test de lecture a échoué.${NC}"
-                fi
-            else
-                log_result "${RED}Le test d'écriture a échoué.${NC}"
-            fi
-            
-            # Retourner au répertoire original
-            cd "$current_dir" 2>/dev/null
-            
-            # Nettoyage sécurisé
-            if [[ "$test_dir" != "." ]]; then
-                rm -f "${test_dir}/test_file" 2>/dev/null
-                rmdir "$test_dir" 2>/dev/null
-            fi
-            ;;
-    esac
-    
-    # Préparer les données pour le tableau
-    if [[ "$PLATFORM" == "macos" ]]; then
-        local metrics=(
-            "Taille totale:$total_size"
-            "Espace libre:$free_space"
-            "Vitesse d'écriture:$(printf "%.2f MB/s" "$write_speed")"
-            "Vitesse de lecture:$(printf "%.2f MB/s" "$read_speed")"
-        )
+    # Obtenir les informations sur l'espace disque avec df (commande de base)
+    log_result "Récupération des informations de disque..."
+    if df -h / 2>/dev/null >/dev/null; then
+        total_size=$(df -h / | awk 'NR==2 {print $2}')
+        used_space=$(df -h / | awk 'NR==2 {print $3}')
+        free_space=$(df -h / | awk 'NR==2 {print $4}')
+        log_result "  Espace disque: Total=$total_size, Utilisé=$used_space, Libre=$free_space"
     else
-        local metrics=(
-            "Taille totale:$total_size"
-            "Espace utilisé:$used_space"
-            "Espace libre:$free_space"
-            "Vitesse d'écriture:$(printf "%.2f MB/s" "$write_speed")"
-            "Vitesse de lecture:$(printf "%.2f MB/s" "$read_speed")"
-        )
+        log_result "${YELLOW}Impossible d'obtenir les informations sur l'espace disque${NC}"
     fi
+    
+    # Simplification extrême : on teste directement dans le répertoire courant
+    log_result "${YELLOW}Test de performance disque simplifié en cours...${NC}"
+    
+    # Fichier temporaire directement dans le répertoire courant
+    local test_file="./tmp_benchmark_file_$$"
+    
+    # Test d'écriture ultra simple avec dd
+    log_result "  Exécution du test d'écriture..."
+    local start_time=$(date +%s)
+    dd if=/dev/zero of="$test_file" bs=4k count=5000 status=none 2>/dev/null
+    local end_time=$(date +%s)
+    local time_diff=$((end_time - start_time))
+    
+    # Calcul simple de la vitesse d'écriture
+    if [[ -f "$test_file" ]]; then
+        if [[ $time_diff -gt 0 ]]; then
+            # 5000 * 4k = 20M
+            write_speed=$((20 / time_diff))
+            log_result "  Vitesse d'écriture: ${write_speed} MB/s"
+        else
+            write_speed=20  # Si trop rapide pour être mesuré
+            log_result "  Vitesse d'écriture: >20 MB/s (trop rapide pour être mesuré précisément)"
+        fi
+        
+        # Test de lecture simple
+        log_result "  Exécution du test de lecture..."
+        start_time=$(date +%s)
+        dd if="$test_file" of=/dev/null bs=4k count=5000 status=none 2>/dev/null
+        end_time=$(date +%s)
+        time_diff=$((end_time - start_time))
+        
+        if [[ $time_diff -gt 0 ]]; then
+            read_speed=$((20 / time_diff))
+            log_result "  Vitesse de lecture: ${read_speed} MB/s"
+        else
+            read_speed=20  # Si trop rapide pour être mesuré
+            log_result "  Vitesse de lecture: >20 MB/s (trop rapide pour être mesuré précisément)"
+        fi
+    else
+        log_result "${RED}Erreur: Le test d'écriture a échoué${NC}"
+    fi
+    
+    # Nettoyage (même si le fichier n'existe pas, cette commande est sans danger)
+    rm -f "$test_file" 2>/dev/null
+    
+    # Créer le tableau des résultats 
+    local metrics=(
+        "Taille totale:$total_size"
+        "Espace utilisé:$used_space"
+        "Espace libre:$free_space"
+        "Vitesse d'écriture:$(printf "%d MB/s" "$write_speed")"
+        "Vitesse de lecture:$(printf "%d MB/s" "$read_speed")"
+    )
     
     format_table "Résultats Disque" "${metrics[@]}"
+    
+    log_result "${GREEN}Benchmark disque terminé${NC}"
 }
 
 # Fonction pour le benchmark réseau
