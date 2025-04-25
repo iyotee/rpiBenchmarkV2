@@ -166,7 +166,7 @@ show_header() {
     echo ""
     echo -e "${BLUE}${BOLD}╔═════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}${BOLD}║                                                                 ║${NC}"
-    echo -e "${BLUE}${BOLD}║  ${WHITE}${BOLD}  RPi BENCHMARK v2.0 - ANALYSE COMPLÈTE DES PERFORMANCES  ${NC}${BLUE}${BOLD}  ║${NC}"
+    echo -e "${BLUE}${BOLD}║  ${WHITE}${BOLD}  RPi BENCHMARK v2.0 - ANALYSE COMPLÈTE DES PERFORMANCES       ${NC}${BLUE}${BOLD}  ║${NC}"
     echo -e "${BLUE}${BOLD}║                                                                 ║${NC}"
     echo -e "${BLUE}${BOLD}╚═════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
@@ -1321,6 +1321,24 @@ generate_charts() {
     local html_file="$RESULTS_DIR/benchmark_charts.html"
     local date_formatted=$(date '+%d/%m/%Y à %H:%M')
     
+    # Extraire plus de données pour les graphiques
+    local cpu_single_thread=$(grep -A 10 "Résultats CPU" "$LOG_FILE" | grep "Opérations/sec" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local cpu_multi_thread=$(grep -A 10 "Résultats Threads" "$LOG_FILE" | grep "Opérations totales" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local cpu_temps=$(grep -A 10 "Résultats CPU" "$LOG_FILE" | grep "Temps total" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local cpu_threads_latency=$(grep -A 10 "Résultats Threads" "$LOG_FILE" | grep "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    
+    local memory_speed=$(grep -A 10 "Résultats Mémoire" "$LOG_FILE" | grep "Vitesse de transfert" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local memory_used=$(grep -A 10 "Résultats Mémoire" "$LOG_FILE" | grep "Mémoire utilisée" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local memory_free=$(grep -A 10 "Résultats Mémoire" "$LOG_FILE" | grep "Mémoire libre" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local memory_ratio=$(grep -A 10 "Résultats Mémoire" "$LOG_FILE" | grep "Ratio utilisation" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    
+    local disk_write=$(grep -A 10 "Résultats Disque" "$LOG_FILE" | grep "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local disk_read=$(grep -A 10 "Résultats Disque" "$LOG_FILE" | grep "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    
+    local network_download=$(grep -A 10 "Résultats Réseau" "$LOG_FILE" | grep "Débit descendant" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local network_upload=$(grep -A 10 "Résultats Réseau" "$LOG_FILE" | grep "Débit montant" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local network_ping=$(grep -A 10 "Résultats Réseau" "$LOG_FILE" | grep "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    
     # Créer le fichier HTML avec la date et l'heure actuelles
     cat > "$html_file" << EOF
 <!DOCTYPE html>
@@ -1366,6 +1384,35 @@ generate_charts() {
             margin-bottom: 10px;
             color: #3498db;
         }
+        .system-info {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            padding: 15px;
+            margin: 10px auto;
+            max-width: 90%;
+        }
+        .system-title {
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+        .system-details {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+        }
+        .system-detail {
+            margin: 5px 10px;
+            padding: 5px;
+            border-bottom: 1px dashed #eee;
+        }
+        .detail-label {
+            font-weight: bold;
+            color: #7f8c8d;
+        }
         @media (max-width: 768px) {
             .chart-container {
                 width: 90%;
@@ -1382,10 +1429,35 @@ generate_charts() {
 <body>
     <h1>RPi Benchmark Results</h1>
     
+    <div class="system-info">
+        <div class="system-title">Informations Système</div>
+        <div class="system-details">
+            <div class="system-detail">
+                <span class="detail-label">Date du test:</span> ${date_formatted}
+            </div>
+            <div class="system-detail">
+                <span class="detail-label">Hostname:</span> $(hostname)
+            </div>
+            <div class="system-detail">
+                <span class="detail-label">OS:</span> $(uname -s) $(uname -r)
+            </div>
+            <div class="system-detail">
+                <span class="detail-label">CPU:</span> $(grep "model name" /proc/cpuinfo | head -n 1 | cut -d: -f2- | sed 's/^[ \t]*//' || echo "N/A")
+            </div>
+            <div class="system-detail">
+                <span class="detail-label">Mémoire:</span> $(free -h | grep "Mem:" | awk '{print $2}' || echo "N/A")
+            </div>
+        </div>
+    </div>
+    
     <div class="charts-container">
         <div class="chart-container">
             <div class="chart-title">Performance CPU</div>
             <canvas id="cpuChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <div class="chart-title">Performance Threads</div>
+            <canvas id="threadsChart"></canvas>
         </div>
         <div class="chart-container">
             <div class="chart-title">Performance Mémoire</div>
@@ -1399,6 +1471,10 @@ generate_charts() {
             <div class="chart-title">Performance Réseau</div>
             <canvas id="networkChart"></canvas>
         </div>
+        <div class="chart-container">
+            <div class="chart-title">Utilisation Mémoire</div>
+            <canvas id="memUsageChart"></canvas>
+        </div>
     </div>
     
     <div class="footer">
@@ -1410,26 +1486,30 @@ generate_charts() {
         const data = {
             cpu: {
                 singleThread: {
-                    events: 32310206,
-                    opsPerSec: 3230563.48
+                    events: 0,
+                    opsPerSec: ${cpu_single_thread},
+                    execTime: ${cpu_temps}
                 },
                 multiThread: {
-                    events: 217043164,
-                    opsPerSec: 21701265.20
+                    events: ${cpu_multi_thread},
+                    opsPerSec: 0,
+                    latency: ${cpu_threads_latency}
                 }
             },
             memory: {
-                transferSpeed: 2562.22
+                transferSpeed: ${memory_speed},
+                used: ${memory_used},
+                free: ${memory_free},
+                ratio: ${memory_ratio}
             },
             disk: {
-                writeSpeed: 246.38,
-                readSpeed: 1002.24,
-                writeIOPS: 15768.56,
-                readIOPS: 64143.05
+                writeSpeed: ${disk_write},
+                readSpeed: ${disk_read}
             },
             network: {
-                downloadSpeed: 0,
-                ping: 45.272
+                downloadSpeed: ${network_download},
+                uploadSpeed: ${network_upload},
+                ping: ${network_ping}
             }
         };
 EOF
@@ -1468,12 +1548,28 @@ EOF
         new Chart(document.getElementById('cpuChart'), {
             type: 'bar',
             data: {
-                labels: ['Single Thread', 'Multi Thread'],
+                labels: ['Opérations/sec', 'Temps d\'exécution (sec)'],
                 datasets: [{
-                    label: 'Opérations par seconde',
-                    data: [data.cpu.singleThread.opsPerSec, data.cpu.multiThread.opsPerSec],
+                    label: 'CPU Performance',
+                    data: [data.cpu.singleThread.opsPerSec, data.cpu.singleThread.execTime],
                     backgroundColor: ['rgba(54, 162, 235, 0.7)', 'rgba(255, 99, 132, 0.7)'],
                     borderColor: ['rgba(54, 162, 235, 1)', 'rgba(255, 99, 132, 1)'],
+                    borderWidth: 1
+                }]
+            },
+            options: commonOptions
+        });
+
+        // Graphique Threads
+        new Chart(document.getElementById('threadsChart'), {
+            type: 'bar',
+            data: {
+                labels: ['Opérations Totales', 'Latence Moyenne (ms)'],
+                datasets: [{
+                    label: 'Threads Performance',
+                    data: [data.cpu.multiThread.events, data.cpu.multiThread.latency],
+                    backgroundColor: ['rgba(153, 102, 255, 0.7)', 'rgba(255, 159, 64, 0.7)'],
+                    borderColor: ['rgba(153, 102, 255, 1)', 'rgba(255, 159, 64, 1)'],
                     borderWidth: 1
                 }]
             },
@@ -1495,26 +1591,61 @@ EOF
             },
             options: commonOptions
         });
+        
+        // Graphique Utilisation Mémoire
+        new Chart(document.getElementById('memUsageChart'), {
+            type: 'pie',
+            data: {
+                labels: ['Utilisée', 'Libre'],
+                datasets: [{
+                    data: [data.memory.used, data.memory.free],
+                    backgroundColor: [
+                        'rgba(255, 99, 132, 0.7)',
+                        'rgba(75, 192, 192, 0.7)'
+                    ],
+                    borderColor: [
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(75, 192, 192, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return `${label}: ${value} MB (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
         // Graphique Disque
         new Chart(document.getElementById('diskChart'), {
             type: 'bar',
             data: {
-                labels: ['Vitesse Écriture (MB/s)', 'Vitesse Lecture (MB/s)', 'IOPS Écriture', 'IOPS Lecture'],
+                labels: ['Vitesse Écriture (MB/s)', 'Vitesse Lecture (MB/s)'],
                 datasets: [{
                     label: 'Performance',
-                    data: [data.disk.writeSpeed, data.disk.readSpeed, data.disk.writeIOPS, data.disk.readIOPS],
+                    data: [data.disk.writeSpeed, data.disk.readSpeed],
                     backgroundColor: [
                         'rgba(255, 159, 64, 0.7)',
-                        'rgba(153, 102, 255, 0.7)',
-                        'rgba(255, 205, 86, 0.7)',
-                        'rgba(201, 203, 207, 0.7)'
+                        'rgba(153, 102, 255, 0.7)'
                     ],
                     borderColor: [
                         'rgb(255, 159, 64)',
-                        'rgb(153, 102, 255)',
-                        'rgb(255, 205, 86)',
-                        'rgb(201, 203, 207)'
+                        'rgb(153, 102, 255)'
                     ],
                     borderWidth: 1
                 }]
@@ -1526,17 +1657,19 @@ EOF
         new Chart(document.getElementById('networkChart'), {
             type: 'bar',
             data: {
-                labels: ['Débit Descendant (Mbps)', 'Ping (ms)'],
+                labels: ['Débit Descendant (Mbps)', 'Débit Montant (Mbps)', 'Ping (ms)'],
                 datasets: [{
                     label: 'Performance',
-                    data: [data.network.downloadSpeed, data.network.ping],
+                    data: [data.network.downloadSpeed, data.network.uploadSpeed, data.network.ping],
                     backgroundColor: [
                         'rgba(255, 99, 132, 0.7)',
-                        'rgba(54, 162, 235, 0.7)'
+                        'rgba(54, 162, 235, 0.7)',
+                        'rgba(255, 206, 86, 0.7)'
                     ],
                     borderColor: [
                         'rgba(255, 99, 132, 1)',
-                        'rgba(54, 162, 235, 1)'
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 206, 86, 1)'
                     ],
                     borderWidth: 1
                 }]
@@ -1739,6 +1872,69 @@ save_results_to_db() {
     echo -e "${GREEN}Résultats enregistrés dans la base de données${NC}"
 }
 
+# Fonction pour enregistrer les résultats des benchmarks dans la base de données
+save_benchmark_metrics() {
+    # Vérifier si la table exist
+    if ! sqlite3 "$RESULTS_DIR/benchmark_results.db" "SELECT name FROM sqlite_master WHERE type='table' AND name='benchmark_results';" | grep -q "benchmark_results"; then
+        sqlite3 "$RESULTS_DIR/benchmark_results.db" "CREATE TABLE benchmark_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            metric TEXT,
+            value REAL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );"
+    fi
+    
+    local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+    
+    # Extraire les valeurs du CPU benchmark
+    local cpu_ops=$(grep -A 10 "Résultats CPU" "$LOG_FILE" | grep "Opérations/sec" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local cpu_time=$(grep -A 10 "Résultats CPU" "$LOG_FILE" | grep "Temps total" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local cpu_events=$(grep -A 10 "Résultats CPU" "$LOG_FILE" | grep "Événements" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    
+    # Extraire les valeurs du benchmark threads
+    local threads_ops=$(grep -A 10 "Résultats Threads" "$LOG_FILE" | grep "Opérations totales" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local threads_latency=$(grep -A 10 "Résultats Threads" "$LOG_FILE" | grep "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local threads_time=$(grep -A 10 "Résultats Threads" "$LOG_FILE" | grep "Temps d'exécution" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    
+    # Extraire les valeurs du benchmark mémoire
+    local memory_speed=$(grep -A 10 "Résultats Mémoire" "$LOG_FILE" | grep "Vitesse de transfert" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    
+    # Extraire les valeurs du benchmark disque
+    local disk_write=$(grep -A 10 "Résultats Disque" "$LOG_FILE" | grep "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local disk_read=$(grep -A 10 "Résultats Disque" "$LOG_FILE" | grep "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    
+    # Extraire les valeurs du benchmark réseau
+    local network_download=$(grep -A 10 "Résultats Réseau" "$LOG_FILE" | grep "Débit descendant" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local network_upload=$(grep -A 10 "Résultats Réseau" "$LOG_FILE" | grep "Débit montant" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local network_ping=$(grep -A 10 "Résultats Réseau" "$LOG_FILE" | grep "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    
+    # Enregistrer toutes les métriques dans la base de données
+    local metrics=(
+        "cpu_ops_per_sec:$cpu_ops"
+        "cpu_exec_time:$cpu_time"
+        "cpu_events:$cpu_events"
+        "cpu_multi_ops:$threads_ops"
+        "cpu_multi_latency:$threads_latency"
+        "cpu_multi_time:$threads_time"
+        "memory_transfer_speed:$memory_speed"
+        "disk_write:$disk_write"
+        "disk_read:$disk_read"
+        "network_download:$network_download"
+        "network_upload:$network_upload"
+        "network_ping:$network_ping"
+    )
+    
+    # Enregistrer chaque métrique dans la base de données
+    for metric_entry in "${metrics[@]}"; do
+        IFS=':' read -r metric_name metric_value <<< "$metric_entry"
+        if [ -n "$metric_value" ] && [ "$metric_value" != "0" ]; then
+            sqlite3 "$RESULTS_DIR/benchmark_results.db" "INSERT INTO benchmark_results (metric, value, timestamp) VALUES ('$metric_name', $metric_value, '$timestamp');"
+        fi
+    done
+    
+    echo -e "${GREEN}Métriques détaillées enregistrées dans la base de données${NC}"
+}
+
 # Fonction pour modifier run_all_benchmarks pour inclure la génération des graphiques
 run_all_benchmarks() {
     # Option pour conserver les résultats détaillés dans la console
@@ -1751,6 +1947,9 @@ run_all_benchmarks() {
     benchmark_memory
     benchmark_disk
     benchmark_network
+    
+    # Enregistrer les métriques détaillées dans la base de données
+    save_benchmark_metrics
     
     # Afficher le résumé final
     show_summary
@@ -2246,15 +2445,33 @@ get_cpu_info_summary() {
     local cpu_cores=$(grep -c "processor" /proc/cpuinfo)
     local cpu_freq=$(grep "cpu MHz" /proc/cpuinfo | head -n 1 | cut -d: -f2- | sed 's/^[ \t]*//' | cut -d. -f1)
     local cpu_temp=$(get_cpu_temp)
-    local cpu_benchmark=$(get_last_benchmark_value "cpu_score")
+    
+    # Récupérer plus de données de benchmark
+    local cpu_single_ops=$(get_last_benchmark_value "cpu_ops_per_sec")
+    local cpu_single_time=$(get_last_benchmark_value "cpu_exec_time")
+    local cpu_multi_ops=$(get_last_benchmark_value "cpu_multi_ops")
+    local cpu_multi_latency=$(get_last_benchmark_value "cpu_multi_latency")
     
     echo "Modèle CPU:$cpu_model"
     echo "Nombre de cœurs:$cpu_cores"
     echo "Fréquence:${cpu_freq} MHz"
     echo "Température:${cpu_temp}°C"
     
-    if [ -n "$cpu_benchmark" ]; then
-        echo "Score CPU:$cpu_benchmark"
+    # Ajouter les données de benchmark si disponibles
+    if [ -n "$cpu_single_ops" ]; then
+        echo "Ops/sec (single):$cpu_single_ops"
+    fi
+    
+    if [ -n "$cpu_single_time" ]; then
+        echo "Temps d'exécution:$cpu_single_time sec"
+    fi
+    
+    if [ -n "$cpu_multi_ops" ]; then
+        echo "Opérations (multi):$cpu_multi_ops"
+    fi
+    
+    if [ -n "$cpu_multi_latency" ]; then
+        echo "Latence threads:$cpu_multi_latency ms"
     fi
 }
 
@@ -2262,13 +2479,26 @@ get_cpu_info_summary() {
 get_ram_info() {
     local total_mem=$(free -m | grep "Mem:" | awk '{print $2}')
     local used_mem=$(free -m | grep "Mem:" | awk '{print $3}')
-    local memory_benchmark=$(get_last_benchmark_value "memory_score")
+    local free_mem=$(free -m | grep "Mem:" | awk '{print $4}')
+    local cached_mem=$(free -m | grep "Mem:" | awk '{print $6}')
+    local memory_speed=$(get_last_benchmark_value "memory_transfer_speed")
     
     echo "Mémoire totale:${total_mem} MB"
     echo "Mémoire utilisée:${used_mem} MB"
+    echo "Mémoire libre:${free_mem} MB"
     
-    if [ -n "$memory_benchmark" ]; then
-        echo "Score Mémoire:$memory_benchmark MB/s"
+    # Calculer le pourcentage d'utilisation
+    if [ "$total_mem" -gt 0 ]; then
+        local usage_percent=$(echo "scale=1; $used_mem * 100 / $total_mem" | bc)
+        echo "Ratio utilisation:${usage_percent}%"
+    fi
+    
+    if [ -n "$cached_mem" ]; then
+        echo "Mémoire cache:${cached_mem} MB"
+    fi
+    
+    if [ -n "$memory_speed" ]; then
+        echo "Vitesse transfert:$memory_speed MB/s"
     fi
 }
 
@@ -2276,12 +2506,19 @@ get_ram_info() {
 get_storage_info() {
     local root_size=$(df -h / | tail -n 1 | awk '{print $2}')
     local root_used=$(df -h / | tail -n 1 | awk '{print $3}')
+    local root_free=$(df -h / | tail -n 1 | awk '{print $4}')
     local root_percent=$(df -h / | tail -n 1 | awk '{print $5}')
     local disk_read=$(get_last_benchmark_value "disk_read")
     local disk_write=$(get_last_benchmark_value "disk_write")
+    local disk_type=$(lsblk -o NAME,TYPE,MODEL | grep "disk" | head -1 | awk '{print $3}' || echo "N/A")
     
     echo "Espace disque total:$root_size"
     echo "Espace utilisé:$root_used ($root_percent)"
+    echo "Espace libre:$root_free"
+    
+    if [ "$disk_type" != "N/A" ]; then
+        echo "Type de disque:$disk_type"
+    fi
     
     if [ -n "$disk_read" ]; then
         echo "Vitesse lecture:$disk_read MB/s"
@@ -2303,12 +2540,28 @@ get_network_info() {
     echo "Interface réseau:$primary_interface"
     echo "Adresse IP:$primary_ip"
     
+    # Récupérer l'adresse MAC si disponible
+    if [ -n "$primary_interface" ]; then
+        local mac_address=$(ip link show $primary_interface | grep -o 'link/ether [0-9a-f:]\+' | cut -d' ' -f2)
+        if [ -n "$mac_address" ]; then
+            echo "Adresse MAC:$mac_address"
+        fi
+    fi
+    
+    # Récupérer la vitesse de la connexion si disponible
+    if [ -n "$primary_interface" ] && [ -e "/sys/class/net/$primary_interface/speed" ]; then
+        local link_speed=$(cat /sys/class/net/$primary_interface/speed 2>/dev/null || echo "N/A")
+        if [ "$link_speed" != "N/A" ]; then
+            echo "Vitesse lien:${link_speed} Mbps"
+        fi
+    fi
+    
     if [ -n "$download_speed" ]; then
-        echo "Téléchargement:$download_speed MB/s"
+        echo "Débit descendant:$download_speed Mbps"
     fi
     
     if [ -n "$upload_speed" ]; then
-        echo "Upload:$upload_speed MB/s"
+        echo "Débit montant:$upload_speed Mbps"
     fi
     
     if [ -n "$ping" ]; then
