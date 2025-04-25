@@ -641,7 +641,7 @@ benchmark_network() {
     local upload_speed=0
     
     # Test de ping simple vers Google DNS et Cloudflare
-    log_result "${YELLOW}Test de latence réseau simplifié...${NC}"
+    log_result "${YELLOW}Test de latence réseau...${NC}"
     
     # Vérifier que ping est disponible
     if command -v ping &>/dev/null; then
@@ -652,8 +652,8 @@ benchmark_network() {
         for server in "${ping_servers[@]}"; do
             log_result "  Test ping vers $server..."
             
-            # Essayer ping avec différentes options selon la plateforme
-            local ping_cmd="ping -c 3 $server"
+            # Essayer ping avec plus de paquets pour une meilleure précision
+            local ping_cmd="ping -c 10 $server"
             local ping_result=""
             
             # Exécution du ping avec gestion d'erreur
@@ -680,68 +680,145 @@ benchmark_network() {
         log_result "  ${RED}Commande ping non disponible${NC}"
     fi
     
-    # Test de débit simplifié (sans speedtest-cli qui peut causer des problèmes)
-    log_result "${YELLOW}Test de débit simplifié...${NC}"
+    # Test de débit amélioré - téléchargement de fichiers plus gros
+    log_result "${YELLOW}Test de débit réseau avancé...${NC}"
     
-    # Téléchargement d'un petit fichier depuis un CDN
-    log_result "  Test de téléchargement..."
-    local test_file="/tmp/speedtest_$$.tmp"
-    local download_url="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"
-    local file_size_kb=90  # Taille approximative en KB
+    # Fichiers de test de différentes tailles - de CDNs fiables
+    local test_files=(
+        "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js:250"  # ~250KB
+        "https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js:90"                  # ~90KB
+        "https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js:500"                    # ~500KB
+    )
     
-    # Utiliser curl si disponible, sinon wget
-    if command -v curl &>/dev/null; then
-        local start_time=$(date +%s)
-        curl -s -o "$test_file" "$download_url" 2>/dev/null
-        local status=$?
-        local end_time=$(date +%s)
-        local time_diff=$((end_time - start_time))
+    local total_speed=0
+    local speed_count=0
+    local test_output="/tmp/speedtest_output_$$.tmp"
+    
+    # Vérifier si speedtest-cli est disponible et fonctionne
+    if command -v speedtest-cli &>/dev/null && speedtest-cli --version &>/dev/null; then
+        log_result "  Utilisation de speedtest-cli pour une mesure précise..."
         
-        if [ $status -eq 0 ] && [ -f "$test_file" ]; then
-            if [ $time_diff -gt 0 ]; then
-                download_speed=$(( (file_size_kb * 8) / time_diff ))  # Conversion en Kbps
-                download_speed=$(( download_speed / 1000 ))  # Conversion en Mbps (arrondi)
-                [ $download_speed -eq 0 ] && download_speed=1  # Minimum 1 Mbps
-                log_result "  Débit descendant approximatif: ${download_speed} Mbps"
+        # Test avec speedtest-cli avec un timeout
+        timeout 30 speedtest-cli --simple > "$test_output" 2>/dev/null
+        
+        if [ $? -eq 0 ] && [ -f "$test_output" ]; then
+            download_speed=$(cat "$test_output" | grep "Download" | awk '{print $2}')
+            upload_speed=$(cat "$test_output" | grep "Upload" | awk '{print $2}')
+            
+            if [ -n "$download_speed" ] && [ "$download_speed" != "0" ]; then
+                log_result "  Débit descendant: ${download_speed} Mbps"
+                log_result "  Débit montant: ${upload_speed} Mbps"
             else
-                download_speed=10  # Valeur par défaut si trop rapide
-                log_result "  Débit descendant: >10 Mbps (trop rapide pour être mesuré précisément)"
+                log_result "  ${RED}Échec du test speedtest-cli${NC}"
+                log_result "  Utilisation de la méthode alternative..."
+                speedtest_failed=true
             fi
         else
-            log_result "  ${RED}Échec du test de téléchargement${NC}"
-        fi
-    elif command -v wget &>/dev/null; then
-        local start_time=$(date +%s)
-        wget -q -O "$test_file" "$download_url" 2>/dev/null
-        local status=$?
-        local end_time=$(date +%s)
-        local time_diff=$((end_time - start_time))
-        
-        if [ $status -eq 0 ] && [ -f "$test_file" ]; then
-            if [ $time_diff -gt 0 ]; then
-                download_speed=$(( (file_size_kb * 8) / time_diff ))  # Conversion en Kbps
-                download_speed=$(( download_speed / 1000 ))  # Conversion en Mbps (arrondi)
-                [ $download_speed -eq 0 ] && download_speed=1  # Minimum 1 Mbps
-                log_result "  Débit descendant approximatif: ${download_speed} Mbps"
-            else
-                download_speed=10  # Valeur par défaut si trop rapide
-                log_result "  Débit descendant: >10 Mbps (trop rapide pour être mesuré précisément)"
-            fi
-        else
-            log_result "  ${RED}Échec du test de téléchargement${NC}"
+            log_result "  ${RED}Échec du test speedtest-cli${NC}"
+            log_result "  Utilisation de la méthode alternative..."
+            speedtest_failed=true
         fi
     else
-        log_result "  ${RED}Commandes curl et wget non disponibles${NC}"
+        log_result "  ${YELLOW}speedtest-cli non disponible, utilisation de la méthode alternative...${NC}"
+        speedtest_failed=true
+    fi
+    
+    # Si speedtest-cli a échoué ou n'est pas disponible, utiliser la méthode manuelle
+    if [ "${speedtest_failed:-true}" = true ]; then
+        # Tester les téléchargements avec curl ou wget
+        if command -v curl &>/dev/null || command -v wget &>/dev/null; then
+            for test_file_info in "${test_files[@]}"; do
+                local url=$(echo "$test_file_info" | cut -d: -f1)
+                local size_kb=$(echo "$test_file_info" | cut -d: -f2)
+                local file_name=$(basename "$url")
+                local output_file="/tmp/${file_name}_$$"
+                
+                log_result "  Test avec fichier de ${size_kb}KB..."
+                
+                # Télécharger avec curl ou wget
+                if command -v curl &>/dev/null; then
+                    local start_time=$(date +%s.%N 2>/dev/null || date +%s)
+                    curl -s -o "$output_file" "$url" 2>/dev/null
+                    local status=$?
+                    local end_time=$(date +%s.%N 2>/dev/null || date +%s)
+                    
+                    # Calcul plus précis avec date nanoseconde si disponible
+                    if [[ "$start_time" == *"."* ]]; then
+                        local time_diff=$(echo "$end_time - $start_time" | bc 2>/dev/null)
+                    else
+                        local time_diff=$((end_time - start_time))
+                    fi
+                elif command -v wget &>/dev/null; then
+                    local start_time=$(date +%s.%N 2>/dev/null || date +%s)
+                    wget -q -O "$output_file" "$url" 2>/dev/null
+                    local status=$?
+                    local end_time=$(date +%s.%N 2>/dev/null || date +%s)
+                    
+                    # Calcul plus précis avec date nanoseconde si disponible
+                    if [[ "$start_time" == *"."* ]]; then
+                        local time_diff=$(echo "$end_time - $start_time" | bc 2>/dev/null)
+                    else
+                        local time_diff=$((end_time - start_time))
+                    fi
+                fi
+                
+                # Nettoyer le fichier temporaire
+                rm -f "$output_file" 2>/dev/null
+                
+                # Calculer la vitesse si le téléchargement a réussi
+                if [ $status -eq 0 ] && [ -n "$time_diff" ] && [ "$time_diff" != "0" ]; then
+                    # Convertir KB en bits et calculer la vitesse
+                    if [[ "$time_diff" == *"."* ]]; then
+                        local speed_mbps=$(echo "scale=2; ($size_kb * 8) / ($time_diff * 1000)" | bc 2>/dev/null)
+                    else
+                        if [ $time_diff -gt 0 ]; then
+                            local speed_kbps=$(( (size_kb * 8) / time_diff ))
+                            local speed_mbps=$(echo "scale=2; $speed_kbps / 1000" | bc 2>/dev/null || echo "$(( speed_kbps / 1000 ))")
+                        else
+                            local speed_mbps=10  # Valeur par défaut si trop rapide
+                        fi
+                    fi
+                    
+                    if [ -n "$speed_mbps" ] && [ "$speed_mbps" != "0" ]; then
+                        log_result "    Vitesse: ${speed_mbps} Mbps"
+                        total_speed=$(echo "$total_speed + $speed_mbps" | bc 2>/dev/null || echo "$total_speed")
+                        speed_count=$((speed_count + 1))
+                    fi
+                else
+                    log_result "    ${RED}Échec du test ou calcul impossible${NC}"
+                fi
+            done
+            
+            # Calculer la moyenne des vitesses
+            if [ $speed_count -gt 0 ]; then
+                download_speed=$(echo "scale=2; $total_speed / $speed_count" | bc 2>/dev/null || echo "5")
+                log_result "  Débit descendant moyen: ${download_speed} Mbps"
+            else
+                download_speed=5  # Valeur par défaut
+                log_result "  ${YELLOW}Impossible de calculer précisément le débit, utilisation d'une valeur par défaut${NC}"
+            fi
+        else
+            log_result "  ${RED}curl et wget non disponibles, impossible de tester le débit${NC}"
+            download_speed=5  # Valeur par défaut
+        fi
     fi
     
     # Nettoyage
-    rm -f "$test_file" 2>/dev/null
+    rm -f "$test_output" 2>/dev/null
     
     # Créer le tableau des résultats
-    local metrics=(
-        "Latence moyenne:$(printf "%.1f ms" "$avg_ping")"
-        "Débit descendant:$(printf "%d Mbps" "$download_speed")"
-    )
+    if [ -n "$upload_speed" ] && [ "$upload_speed" != "0" ]; then
+        local metrics=(
+            "Latence moyenne:$(printf "%.2f ms" "$avg_ping")"
+            "Débit descendant:$(printf "%.2f Mbps" "$download_speed")"
+            "Débit montant:$(printf "%.2f Mbps" "$upload_speed")"
+        )
+    else
+        local metrics=(
+            "Latence moyenne:$(printf "%.2f ms" "$avg_ping")"
+            "Débit descendant:$(printf "%.2f Mbps" "$download_speed")"
+        )
+    fi
     
     format_table "Résultats Réseau" "${metrics[@]}"
     
