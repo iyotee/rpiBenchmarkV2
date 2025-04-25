@@ -743,6 +743,7 @@ benchmark_network() {
     local avg_ping=0
     local download_speed=0
     local upload_speed=0
+    local speedtest_failed=true
     
     # Test de ping simple vers Google DNS et Cloudflare
     log_result "${YELLOW}Test de latence réseau...${NC}"
@@ -808,6 +809,7 @@ benchmark_network() {
                 log_result "  Débit descendant: ${download_speed} Mbps"
                 log_result "  Débit montant: ${upload_speed} Mbps"
                 log_result "  Ping (speedtest-cli): ${ping_result} ms"
+                speedtest_failed=false
             else
                 log_result "  ${RED}Échec du test speedtest-cli (résultats vides)${NC}"
                 log_result "  Utilisation de la méthode alternative..."
@@ -829,17 +831,21 @@ benchmark_network() {
         speedtest_failed=true
     fi
     
-    # Si speedtest-cli a échoué ou n'est pas disponible, utiliser la méthode manuelle
-    if [ "${speedtest_failed:-true}" = true ]; then
-        # Fichiers de test de différentes tailles (version avec HTTPS et HTTP pour plus de compatibilité)
+    # Si speedtest-cli a échoué, utiliser la méthode manuelle
+    if [ "$speedtest_failed" = true ]; then
+        # Fichiers de test de différentes tailles
         local test_files=(
-            "http://speedtest.tele2.net/100KB.zip:100"  # Très fiable et spécifiquement conçu pour les tests
-            "http://speedtest.tele2.net/10MB.zip:10000" # Test optionnel pour une meilleure précision
+            "http://speedtest.tele2.net/100KB.zip:100"
+            "http://speedtest.tele2.net/1MB.zip:1000"
         )
         
         # Effectuer les tests de téléchargement
-        download_speed=$(test_download_speed "${test_files[@]}")
+        local alt_download_speed=$(test_download_speed "${test_files[@]}")
+        download_speed=$alt_download_speed
     fi
+    
+    # S'assurer que download_speed a une valeur
+    [ -z "$download_speed" ] && download_speed=5
     
     # Créer le tableau des résultats
     if [ -n "$upload_speed" ] && [ "$upload_speed" != "0" ]; then
@@ -1780,7 +1786,7 @@ main() {
 }
 
 # Exécution du script
-main "$@" 
+main "$@"
 
 # Fonction pour afficher un résumé final des benchmarks
 show_summary() {
