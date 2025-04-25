@@ -548,103 +548,178 @@ benchmark_memory() {
 benchmark_disk() {
     log_result "\n${BLUE}=== BENCHMARK DISQUE ===${NC}"
     
+    # Variables communes
+    local total_size="N/A"
+    local used_space="N/A"
+    local free_space="N/A"
+    local write_speed=0
+    local read_speed=0
+    local write_iops=0
+    local read_iops=0
+
+    # Obtenir les informations sur l'espace disque (commun à toutes les plateformes)
+    if df -h / &>/dev/null; then
+        local df_output=$(df -h / | awk 'NR==2 {print $2,$3,$4}')
+        total_size=$(echo "$df_output" | awk '{print $1}')
+        used_space=$(echo "$df_output" | awk '{print $2}')
+        free_space=$(echo "$df_output" | awk '{print $3}')
+    fi
+    
     case $PLATFORM in
         "macos")
-            # Utiliser diskutil et dd pour macOS
-            local disk_info=$(diskutil info / | grep "Device Node\|Volume Name\|File System\|Total Size\|Free Space")
-            local total_size=$(echo "$disk_info" | grep "Total Size" | awk '{print $3,$4}')
-            local free_space=$(echo "$disk_info" | grep "Free Space" | awk '{print $3,$4}')
+            # Test de performance avec dd pour macOS
+            log_result "${YELLOW}Test de performance disque en cours...${NC}"
             
-            # Test de performance avec dd
-            local temp_file=$(mktemp)
+            # Créer un fichier temporaire dans un répertoire accessible
+            local temp_dir=$(mktemp -d)
+            local temp_file="$temp_dir/benchmark_file"
             
-            # Test d'écriture
+            # Test d'écriture avec dd
+            log_result "  Exécution du test d'écriture..."
             local start_time=$(date +%s.%N)
-            dd if=/dev/zero of="$temp_file" bs=1M count=1000 2>/dev/null
+            dd if=/dev/zero of="$temp_file" bs=1M count=100 2>/dev/null || log_result "${RED}Erreur lors du test d'écriture${NC}"
             local end_time=$(date +%s.%N)
-            local time_diff=$(echo "$end_time - $start_time" | bc)
-            local write_speed=0
             
-            if (( $(echo "$time_diff > 0" | bc -l) )); then
-                write_speed=$(echo "scale=2; 1000 / $time_diff" | bc)
-            else
-                write_speed="200.00" # Valeur par défaut si le temps est trop court pour être mesuré
+            # Calcul de la vitesse d'écriture
+            if [[ $? -eq 0 ]]; then
+                local time_diff=$(echo "$end_time - $start_time" | bc)
+                if (( $(echo "$time_diff > 0" | bc -l) )); then
+                    write_speed=$(echo "scale=2; 100 / $time_diff" | bc)
+                fi
             fi
             
-            # Test de lecture
-            local start_time=$(date +%s.%N)
-            dd if="$temp_file" of=/dev/null bs=1M count=1000 2>/dev/null
-            local end_time=$(date +%s.%N)
-            local time_diff=$(echo "$end_time - $start_time" | bc)
-            local read_speed=0
-            
-            if (( $(echo "$time_diff > 0" | bc -l) )); then
-                read_speed=$(echo "scale=2; 1000 / $time_diff" | bc)
-            else
-                read_speed="500.00" # Valeur par défaut si le temps est trop court pour être mesuré
+            # Test de lecture avec dd
+            log_result "  Exécution du test de lecture..."
+            if [[ -f "$temp_file" ]]; then
+                local start_time=$(date +%s.%N)
+                dd if="$temp_file" of=/dev/null bs=1M 2>/dev/null || log_result "${RED}Erreur lors du test de lecture${NC}"
+                local end_time=$(date +%s.%N)
+                
+                # Calcul de la vitesse de lecture
+                if [[ $? -eq 0 ]]; then
+                    local time_diff=$(echo "$end_time - $start_time" | bc)
+                    if (( $(echo "$time_diff > 0" | bc -l) )); then
+                        read_speed=$(echo "scale=2; 100 / $time_diff" | bc)
+                    fi
+                fi
             fi
             
-            rm "$temp_file"
-            
-            # Affichage formaté avec les unités de manière cohérente
-            if [[ -z "$total_size" ]]; then
-                total_size="N/A"
-            fi
-            
-            if [[ -z "$free_space" ]]; then
-                free_space="N/A"
-            fi
-            
-            # Préparer les données pour le tableau
-            local metrics=(
-                "Taille totale:$total_size"
-                "Espace libre:$free_space"
-                "Vitesse d'écriture:$(printf "%.2f MB/s" "$write_speed")"
-                "Vitesse de lecture:$(printf "%.2f MB/s" "$read_speed")"
-            )
-            
-            format_table "Résultats Disque" "${metrics[@]}"
+            # Nettoyage
+            rm -f "$temp_file" 2>/dev/null
+            rmdir "$temp_dir" 2>/dev/null
             ;;
+            
         *)
-            # Test standard pour Linux
-    local test_dir="/tmp/disk_benchmark"
-    mkdir -p "$test_dir"
-    cd "$test_dir"
-    
-            # Obtenir les informations sur l'espace disque
-            local df_output=$(df -h / | awk 'NR==2 {print $2,$3,$4}')
-            local total_size=$(echo "$df_output" | awk '{print $1}')
-            local used_space=$(echo "$df_output" | awk '{print $2}')
-            local free_space=$(echo "$df_output" | awk '{print $3}')
+            # Méthode plus sûre pour Linux/Raspberry Pi
+            log_result "${YELLOW}Test de performance disque en cours...${NC}"
             
-    sysbench fileio --file-total-size=2G prepare >/dev/null 2>&1
-    local results=$(sysbench fileio --file-total-size=2G --file-test-mode=seqwr run 2>/dev/null)
-    local write_speed=$(echo "$results" | grep 'written, MiB/s:' | awk '{print $NF}')
-    local write_iops=$(echo "$results" | grep 'writes/s:' | awk '{print $NF}')
-    
-            results=$(sysbench fileio --file-total-size=2G --file-test-mode=seqrd run 2>/dev/null)
-    local read_speed=$(echo "$results" | grep 'read, MiB/s:' | awk '{print $NF}')
-    local read_iops=$(echo "$results" | grep 'reads/s:' | awk '{print $NF}')
-    
-            # Préparer les données pour le tableau avec les unités
-            local metrics=(
-                "Taille totale:$(printf "%s" "$total_size")"
-                "Espace utilisé:$(printf "%s" "$used_space")"
-                "Espace libre:$(printf "%s" "$free_space")"
-                "Vitesse d'écriture:$(printf "%.2f MB/s" "${write_speed:-0}")"
-                "IOPS en écriture:$(printf "%.2f" "${write_iops:-0}")"
-                "Vitesse de lecture:$(printf "%.2f MB/s" "${read_speed:-0}")"
-                "IOPS en lecture:$(printf "%.2f" "${read_iops:-0}")"
-            )
+            # Créer un répertoire temporaire plus sûr
+            local test_dir="/tmp/disk_benchmark_$$"
+            mkdir -p "$test_dir" || { 
+                log_result "${RED}Impossible de créer le répertoire temporaire $test_dir${NC}"
+                local metrics=(
+                    "Taille totale:$total_size"
+                    "Espace utilisé:$used_space"
+                    "Espace libre:$free_space"
+                    "Vitesse d'écriture:N/A"
+                    "Vitesse de lecture:N/A"
+                )
+                format_table "Résultats Disque" "${metrics[@]}"
+                return 1
+            }
             
-            format_table "Résultats Disque" "${metrics[@]}"
-    
-    # Nettoyage
-    sysbench fileio cleanup >/dev/null 2>&1
-    cd - >/dev/null
-    rm -rf "$test_dir"
+            # Changer vers le répertoire temporaire
+            local current_dir=$(pwd)
+            cd "$test_dir" || {
+                log_result "${RED}Impossible d'accéder au répertoire temporaire $test_dir${NC}"
+                rm -rf "$test_dir" 2>/dev/null
+                local metrics=(
+                    "Taille totale:$total_size"
+                    "Espace utilisé:$used_space"
+                    "Espace libre:$free_space"
+                    "Vitesse d'écriture:N/A"
+                    "Vitesse de lecture:N/A"
+                )
+                format_table "Résultats Disque" "${metrics[@]}"
+                return 1
+            }
+            
+            # Test avec dd au lieu de sysbench pour plus de compatibilité
+            log_result "  Exécution du test d'écriture..."
+            local start_time=$(date +%s.%N)
+            dd if=/dev/zero of=./test_file bs=1M count=100 2>/dev/null || log_result "${RED}Erreur lors du test d'écriture${NC}"
+            local end_time=$(date +%s.%N)
+            
+            # Calcul de la vitesse d'écriture
+            if [[ $? -eq 0 ]] && [[ -f "./test_file" ]]; then
+                local time_diff=$(echo "$end_time - $start_time" | bc)
+                if (( $(echo "$time_diff > 0" | bc -l) )); then
+                    write_speed=$(echo "scale=2; 100 / $time_diff" | bc)
+                fi
+                
+                # Test de lecture
+                log_result "  Exécution du test de lecture..."
+                local start_time=$(date +%s.%N)
+                dd if=./test_file of=/dev/null bs=1M 2>/dev/null || log_result "${RED}Erreur lors du test de lecture${NC}"
+                local end_time=$(date +%s.%N)
+                
+                # Calcul de la vitesse de lecture
+                if [[ $? -eq 0 ]]; then
+                    local time_diff=$(echo "$end_time - $start_time" | bc)
+                    if (( $(echo "$time_diff > 0" | bc -l) )); then
+                        read_speed=$(echo "scale=2; 100 / $time_diff" | bc)
+                    fi
+                fi
+            fi
+            
+            # Tenter un test simple pour les IOPS (opérations par seconde)
+            if command -v fio &>/dev/null; then
+                log_result "  Exécution du test IOPS avec fio..."
+                fio --name=test --filename=./test_file_iops --direct=1 --rw=randrw --bs=4k --size=10M --numjobs=1 --runtime=10 --group_reporting --output-format=terse > ./fio_results.txt 2>/dev/null
+                
+                if [[ -f "./fio_results.txt" ]]; then
+                    write_iops=$(grep -o "iops=[0-9.]*" ./fio_results.txt | grep -o "[0-9.]*" | head -1)
+                    read_iops=$(grep -o "iops=[0-9.]*" ./fio_results.txt | grep -o "[0-9.]*" | tail -1)
+                    [ -z "$write_iops" ] && write_iops=0
+                    [ -z "$read_iops" ] && read_iops=0
+                fi
+            fi
+            
+            # Retourner au répertoire original
+            cd "$current_dir"
+            
+            # Nettoyage
+            rm -rf "$test_dir" 2>/dev/null
             ;;
     esac
+    
+    # Préparer les données pour le tableau
+    if [[ "$PLATFORM" == "macos" ]]; then
+        local metrics=(
+            "Taille totale:$total_size"
+            "Espace libre:$free_space"
+            "Vitesse d'écriture:$(printf "%.2f MB/s" "$write_speed")"
+            "Vitesse de lecture:$(printf "%.2f MB/s" "$read_speed")"
+        )
+    else
+        local metrics=(
+            "Taille totale:$total_size"
+            "Espace utilisé:$used_space"
+            "Espace libre:$free_space"
+            "Vitesse d'écriture:$(printf "%.2f MB/s" "$write_speed")"
+            "Vitesse de lecture:$(printf "%.2f MB/s" "$read_speed")"
+        )
+        
+        # Ajouter les IOPS seulement si nous avons pu les mesurer
+        if (( $(echo "$write_iops > 0" | bc -l) )) || (( $(echo "$read_iops > 0" | bc -l) )); then
+            metrics+=(
+                "IOPS en écriture:$(printf "%.2f" "$write_iops")"
+                "IOPS en lecture:$(printf "%.2f" "$read_iops")"
+            )
+        fi
+    fi
+    
+    format_table "Résultats Disque" "${metrics[@]}"
 }
 
 # Fonction pour le benchmark réseau
