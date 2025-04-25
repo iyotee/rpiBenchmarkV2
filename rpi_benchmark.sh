@@ -166,7 +166,7 @@ show_header() {
     echo ""
     echo -e "${BLUE}${BOLD}╔═════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}${BOLD}║                                                                 ║${NC}"
-    echo -e "${BLUE}${BOLD}║  ${BG_BLUE}${WHITE}${BOLD}  RPi BENCHMARK v2.0 - ANALYSE COMPLÈTE DES PERFORMANCES  ${NC}${BLUE}${BOLD}  ║${NC}"
+    echo -e "${BLUE}${BOLD}║  ${WHITE}${BOLD}  RPi BENCHMARK v2.0 - ANALYSE COMPLÈTE DES PERFORMANCES  ${NC}${BLUE}${BOLD}  ║${NC}"
     echo -e "${BLUE}${BOLD}║                                                                 ║${NC}"
     echo -e "${BLUE}${BOLD}╚═════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
@@ -253,11 +253,11 @@ format_table() {
     # Ligne supérieure
     echo -ne "${line_color}${top_left}"
     printf "%s" $(printf "%${total_width}s" | tr " " "$horizontal")
-    echo -e "${right_t}${NC}"
+    echo -e "${top_right}${NC}"
     
     # Ligne d'en-tête
     echo -ne "${line_color}${vertical}${NC}${header_bg}${header_fg}${BOLD}"
-    printf " %-${name_width}s │ %${value_width}s " "MÉTRIQUE" "VALEUR"
+    printf " %-${name_width}s │ %-${value_width}s " "MÉTRIQUE" "VALEUR"
     echo -e "${NC}${line_color}${vertical}${NC}"
     
     # Ligne de séparation
@@ -282,7 +282,7 @@ format_table() {
         fi
         
         echo -ne "${line_color}${vertical}${NC}${background_color}"
-        printf " ${text_color}%-${name_width}s${NC}${background_color} ${line_color}${vertical}${NC}${background_color} ${value_color}%${value_width}s ${NC}${line_color}${vertical}${NC}\n" "$name" "$value"
+        printf " ${text_color}%-${name_width}s${NC}${background_color} ${line_color}${vertical}${NC}${background_color} ${value_color}%-${value_width}s ${NC}${line_color}${vertical}${NC}\n" "$name" "$value"
         
         i=$((i + 1))
     done
@@ -551,8 +551,7 @@ benchmark_cpu() {
             rm "$temp_file"
             echo -e "\n${GREEN}${SYMBOL_CHECK} Test terminé ${NC}"
             
-            # Formatage pour assurer un alignement parfait - Traitement exact du modèle
-            # Stockage de chaque élément dans une variable intermédiaire
+            # Formatage pour assurer un alignement parfait
             local model="$cpu_brand"
             local freq_ghz=$(printf "%.2f GHz" "$(echo "scale=2; $cpu_freq/1000000000" | bc)")
             local speed_mb=$(printf "%.2f MB/s" "$write_speed")
@@ -571,12 +570,15 @@ benchmark_cpu() {
             echo -e "${WHITE}${BOLD}Test de performance CPU pour Linux...${NC}"
             echo -e "${YELLOW}${SYMBOL_INFO} Exécution du benchmark sysbench CPU...${NC}"
             
-            # Barre de progression simulée pendant que sysbench s'exécute
-            show_progress 0
-            local results=$(sysbench cpu --cpu-max-prime=20000 --threads=1 run 2>/dev/null) &
+            # Créer un fichier temporaire pour stocker les résultats
+            local temp_results_file=$(mktemp)
+            
+            # Exécuter sysbench en arrière-plan et rediriger sa sortie vers un fichier temporaire
+            sysbench cpu --cpu-max-prime=20000 --threads=1 run > "$temp_results_file" 2>/dev/null &
             local pid=$!
             
             # Afficher une barre de progression pendant l'exécution
+            show_progress 0
             local progress=0
             while kill -0 $pid 2>/dev/null; do
                 progress=$((progress + 5))
@@ -590,20 +592,24 @@ benchmark_cpu() {
             show_progress 100
             echo -e "\n${GREEN}${SYMBOL_CHECK} Test terminé ${NC}"
             
+            # Lire les résultats du fichier temporaire
+            local results=$(cat "$temp_results_file")
+            rm "$temp_results_file"
+            
             local events=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
             local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}' | sed 's/s$//')
             local ops=$(echo "$results" | grep 'events per second:' | awk '{print $NF}')
             
-            # Formatage pour assurer un alignement parfait - Traitement explicite
-            local events_value=$(printf "%d" "${events:-0}")
-            local time_value=$(printf "%.2f sec" "$(format_number "$time")")
-            local ops_value=$(printf "%.2f" "$(format_number "$ops")")
+            # Formatage pour assurer un alignement parfait
+            local events_formatted=$(printf "%d" "${events:-0}")
+            local time_formatted=$(printf "%.2f sec" "$(format_number "$time")")
+            local ops_formatted=$(printf "%.2f" "$(format_number "$ops")")
             
             # Préparer les données pour le tableau
             local metrics=(
-                "Événements:$events_value"
-                "Temps total:$time_value"
-                "Opérations/sec:$ops_value"
+                "Événements:$events_formatted"
+                "Temps total:$time_formatted"
+                "Opérations/sec:$ops_formatted"
             )
             
             format_table "Résultats CPU" "${metrics[@]}"
@@ -621,12 +627,15 @@ benchmark_threads() {
     
     local cpu_cores=$(get_cpu_cores)
     
-    # Barre de progression simulée pendant que sysbench s'exécute
-    show_progress 0
-    local results=$(sysbench threads --threads=$cpu_cores --thread-yields=1000 --thread-locks=8 run 2>/dev/null) &
+    # Créer un fichier temporaire pour stocker les résultats
+    local temp_results_file=$(mktemp)
+    
+    # Exécuter sysbench en arrière-plan et rediriger sa sortie vers un fichier temporaire
+    sysbench threads --threads=$cpu_cores --thread-yields=1000 --thread-locks=8 run > "$temp_results_file" 2>/dev/null &
     local pid=$!
     
     # Afficher une barre de progression pendant l'exécution
+    show_progress 0
     local progress=0
     while kill -0 $pid 2>/dev/null; do
         progress=$((progress + 5))
@@ -640,11 +649,15 @@ benchmark_threads() {
     show_progress 100
     echo -e "\n${GREEN}${SYMBOL_CHECK} Test terminé ${NC}"
     
+    # Lire les résultats du fichier temporaire
+    local results=$(cat "$temp_results_file")
+    rm "$temp_results_file"
+    
     local time=$(echo "$results" | grep 'total time:' | awk '{print $NF}' | sed 's/s$//')
     local ops=$(echo "$results" | grep 'total number of events:' | awk '{print $NF}')
     local latency=$(echo "$results" | grep 'avg:' | awk '{print $NF}' | sed 's/ms$//')
     
-    # Préparer les données pour le tableau
+    # Préparer les données pour le tableau avec formatage amélioré
     local metrics=(
         "Nombre de threads:$cpu_cores"
         "Temps d'exécution:$(printf "%.2f sec" "$(format_number "$time")")"
@@ -746,9 +759,9 @@ benchmark_memory() {
                 local total_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $2}')
                 local used_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $3}')
                 local free_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $4}')
-                
-                # Préparer les données pour le tableau
-                local metrics=(
+    
+            # Préparer les données pour le tableau
+            local metrics=(
                     "Mémoire totale:$(printf "%d MB" "$total_memory")"
                     "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
                     "Mémoire libre:$(printf "%d MB" "$free_memory")"
@@ -763,12 +776,15 @@ benchmark_memory() {
                 # Test standard avec sysbench
                 echo -e "${YELLOW}${SYMBOL_INFO} Utilisation de sysbench pour le test de mémoire...${NC}"
                 
-                # Barre de progression simulée pendant que sysbench s'exécute
-                show_progress 0
-                local results=$(sysbench memory --memory-block-size=1K --memory-total-size=10G --memory-access-mode=seq run 2>/dev/null) &
+                # Créer un fichier temporaire pour stocker les résultats
+                local temp_results_file=$(mktemp)
+                
+                # Exécuter sysbench en arrière-plan et rediriger sa sortie vers un fichier temporaire
+                sysbench memory --memory-block-size=1K --memory-total-size=10G --memory-access-mode=seq run > "$temp_results_file" 2>/dev/null &
                 local pid=$!
                 
                 # Afficher une barre de progression pendant l'exécution
+                show_progress 0
                 local progress=0
                 while kill -0 $pid 2>/dev/null; do
                     progress=$((progress + 5))
@@ -781,6 +797,10 @@ benchmark_memory() {
                 wait $pid
                 show_progress 100
                 echo -e "\n${GREEN}${SYMBOL_CHECK} Test terminé ${NC}"
+                
+                # Lire les résultats du fichier temporaire
+                local results=$(cat "$temp_results_file")
+                rm "$temp_results_file"
                 
                 if [ $? -ne 0 ] || [ -z "$results" ]; then
                     echo -e "${RED}${SYMBOL_CROSS} Échec du test sysbench. Utilisation d'une méthode alternative.${NC}"
@@ -859,10 +879,10 @@ benchmark_memory() {
                         "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
                         "Opérations totales:$(printf "%s" "$total_ops")"
                         "Données transférées:$(printf "%s MiB" "$total_transferred")"
-                        "Vitesse de transfert:$(printf "%.2f MiB/sec" "$transfer_speed")"
-                    )
-                    
-                    format_table "Résultats Mémoire" "${metrics[@]}"
+                "Vitesse de transfert:$(printf "%.2f MiB/sec" "$transfer_speed")"
+            )
+            
+            format_table "Résultats Mémoire" "${metrics[@]}"
                 fi
             fi
             ;;
@@ -873,246 +893,310 @@ benchmark_memory() {
 benchmark_disk() {
     modern_header "BENCHMARK DISQUE" $YELLOW $SYMBOL_DISK
     
-    # S'assurer que le répertoire des résultats existe
-    mkdir -p "$RESULTS_DIR" 2>/dev/null
+    echo -e "${WHITE}${BOLD}Test de performance disque...${NC}"
+    echo -e "${YELLOW}${SYMBOL_INFO} Création du fichier de test...${NC}"
     
-    # Variables communes initialisées avec des valeurs par défaut
-    local total_size="N/A"
-    local used_space="N/A"
-    local free_space="N/A"
-    local write_speed=0
-    local read_speed=0
+    # Créer un fichier temporaire pour les tests
+    local temp_dir="/tmp/rpi_benchmark_disk_test"
+    mkdir -p "$temp_dir"
     
-    # Obtenir les informations sur l'espace disque avec df (commande de base)
-    echo -e "${WHITE}${BOLD}Analyse des performances disque...${NC}"
-    echo -e "${YELLOW}${SYMBOL_INFO} Récupération des informations de disque...${NC}"
+    local test_file="$temp_dir/testfile"
     
-    if df -h / 2>/dev/null >/dev/null; then
-        total_size=$(df -h / | awk 'NR==2 {print $2}')
-        used_space=$(df -h / | awk 'NR==2 {print $3}')
-        free_space=$(df -h / | awk 'NR==2 {print $4}')
-        echo -e "${GREEN}${SYMBOL_CHECK} Espace disque: ${WHITE}Total=${LIME}$total_size${NC}, ${WHITE}Utilisé=${YELLOW}$used_space${NC}, ${WHITE}Libre=${GREEN}$free_space${NC}"
-    else
-        echo -e "${YELLOW}${SYMBOL_WARNING} Impossible d'obtenir les informations sur l'espace disque${NC}"
+    # Vérifier l'espace disponible dans /tmp
+    local available_space=$(df -m "$temp_dir" | awk 'NR==2 {print $4}')
+    local test_size=1000 # 1GB par défaut
+    
+    if [ "$available_space" -lt 1500 ]; then
+        test_size=500  # Réduire à 500MB si l'espace est limité
+        if [ "$available_space" -lt 700 ]; then
+            test_size=100  # Réduire davantage si nécessaire
+        fi
     fi
     
-    # Test de performance disque
-    echo -e "${YELLOW}${SYMBOL_INFO} Test de performance disque en cours...${NC}"
+    # Barre de progression pour l'écriture
+    echo -e "${YELLOW}${BOLD}→ Test d'écriture en cours...${NC}"
+    show_progress 0
     
-    # Fichier temporaire directement dans le répertoire courant
-    local test_file="./tmp_benchmark_file_$$"
+    # Mesurer la vitesse d'écriture
+    local write_start=$(date +%s.%N)
     
-    # Test d'écriture ultra simple avec dd
-    echo -e "${YELLOW}${SYMBOL_BOLT} Exécution du test d'écriture...${NC}"
+    # Écrire avec dd et afficher une barre de progression
+    dd if=/dev/zero of="$test_file" bs=1M count=$test_size status=none &
+    local dd_pid=$!
     
-    # Barre de progression simulée
-    for i in {1..10}; do
-        show_progress $((i*10))
+    # Mettre à jour la barre de progression en fonction de la taille du fichier
+    local progress=0
+    while kill -0 $dd_pid 2>/dev/null; do
+        if [ -f "$test_file" ]; then
+            local current_size=$(du -m "$test_file" 2>/dev/null | awk '{print $1}')
+            if [ -n "$current_size" ] && [ "$test_size" -gt 0 ]; then
+                progress=$((current_size * 100 / test_size))
+                [ $progress -gt 100 ] && progress=100
+            fi
+        fi
+        show_progress $progress
+        sleep 0.2
+    done
+    
+    wait $dd_pid
+    show_progress 100
+    
+    local write_end=$(date +%s.%N)
+    local write_time=$(echo "$write_end - $write_start" | bc)
+    local write_speed=$(echo "scale=2; $test_size / $write_time" | bc)
+    echo -e "\n${GREEN}${SYMBOL_CHECK} Test d'écriture terminé ${NC}"
+    
+    # Vider les caches pour un test de lecture précis
+    if [ "$PLATFORM" = "linux" ] && [ "$(id -u)" -eq 0 ]; then
+        sync
+        echo 3 > /proc/sys/vm/drop_caches
+    fi
+    
+    # Barre de progression pour la lecture
+    echo -e "${YELLOW}${BOLD}→ Test de lecture en cours...${NC}"
+    show_progress 0
+    
+    # Mesurer la vitesse de lecture
+    local read_start=$(date +%s.%N)
+    
+    # Lire avec dd et afficher une barre de progression
+    dd if="$test_file" of=/dev/null bs=1M status=none &
+    local dd_pid=$!
+    
+    # Mettre à jour la barre de progression pendant la lecture
+    local progress=0
+    while kill -0 $dd_pid 2>/dev/null; do
+        progress=$((progress + 5))
+        [ $progress -gt 95 ] && progress=95
+        show_progress $progress
         sleep 0.1
     done
     
-    local start_time=$(date +%s)
-    dd if=/dev/zero of="$test_file" bs=4k count=5000 status=none 2>/dev/null
-    local end_time=$(date +%s)
-    local time_diff=$((end_time - start_time))
-    echo -e "\n${GREEN}${SYMBOL_CHECK} Test d'écriture terminé ${NC}"
+    wait $dd_pid
+    show_progress 100
     
-    # Calcul simple de la vitesse d'écriture
-    if [[ -f "$test_file" ]]; then
-        if [[ $time_diff -gt 0 ]]; then
-            # 5000 * 4k = 20M
-            write_speed=$((20 / time_diff))
-            echo -e "${GREEN}Vitesse d'écriture: ${WHITE}${write_speed}${NC} MB/s"
-        else
-            write_speed=20  # Si trop rapide pour être mesuré
-            echo -e "${GREEN}Vitesse d'écriture: ${WHITE}>20${NC} MB/s (trop rapide pour être mesuré précisément)"
-        fi
-        
-        # Test de lecture simple
-        echo -e "${YELLOW}${SYMBOL_BOLT} Exécution du test de lecture...${NC}"
-        
-        # Barre de progression simulée
-        for i in {1..10}; do
-            show_progress $((i*10))
-            sleep 0.1
-        done
-        
-        start_time=$(date +%s)
-        dd if="$test_file" of=/dev/null bs=4k count=5000 status=none 2>/dev/null
-        end_time=$(date +%s)
-        time_diff=$((end_time - start_time))
-        echo -e "\n${GREEN}${SYMBOL_CHECK} Test de lecture terminé ${NC}"
-        
-        if [[ $time_diff -gt 0 ]]; then
-            read_speed=$((20 / time_diff))
-            echo -e "${GREEN}Vitesse de lecture: ${WHITE}${read_speed}${NC} MB/s"
-        else
-            read_speed=20  # Si trop rapide pour être mesuré
-            echo -e "${GREEN}Vitesse de lecture: ${WHITE}>20${NC} MB/s (trop rapide pour être mesuré précisément)"
-        fi
-    else
-        echo -e "${RED}${SYMBOL_CROSS} Erreur: Le test d'écriture a échoué${NC}"
-    fi
+    local read_end=$(date +%s.%N)
+    local read_time=$(echo "$read_end - $read_start" | bc)
+    local read_speed=$(echo "scale=2; $test_size / $read_time" | bc)
+    echo -e "\n${GREEN}${SYMBOL_CHECK} Test de lecture terminé ${NC}"
     
-    # Nettoyage (même si le fichier n'existe pas, cette commande est sans danger)
-    rm -f "$test_file" 2>/dev/null
+    # Nettoyer
+    rm -f "$test_file"
     
-    # Créer le tableau des résultats
-    # Calculer le pourcentage d'utilisation
-    local disk_usage=""
-    if [[ "$used_space" != "N/A" && "$total_size" != "N/A" ]]; then
-        # Extraire les valeurs numériques (en supposant qu'elles sont en Go)
-        local used_num=$(echo "$used_space" | sed 's/[A-Za-z]//g')
-        local total_num=$(echo "$total_size" | sed 's/[A-Za-z]//g')
-        if [[ -n "$used_num" && -n "$total_num" ]]; then
-            disk_usage="$(echo "scale=1; $used_num*100/$total_num" | bc)%"
-        fi
-    fi
+    # Formater les résultats pour assurer un alignement parfait
+    local write_speed_formatted=$(printf "%.2f MB/s" "$(format_number "$write_speed")")
+    local read_speed_formatted=$(printf "%.2f MB/s" "$(format_number "$read_speed")")
+    local test_size_formatted=$(printf "%d MB" "$test_size")
     
-    local metrics=(
-        "Taille totale:$total_size"
-        "Espace utilisé:$used_space"
-        "Espace libre:$free_space"
-        "Utilisation:${disk_usage:-N/A}"
-        "Vitesse d'écriture:$(printf "%d MB/s" "$write_speed")"
-        "Vitesse de lecture:$(printf "%d MB/s" "$read_speed")"
-        "Ratio lecture/écriture:$(printf "%.1fx" "$(echo "scale=1; $read_speed/$write_speed" | bc 2>/dev/null || echo 1)")"
-    )
-    
-    format_table "Résultats Disque" "${metrics[@]}"
-    
-    echo -e "\n${GREEN}${SYMBOL_CHECK} Benchmark disque terminé${NC}"
+    # Préparer les données pour le tableau
+            local metrics=(
+        "Taille du test:$test_size_formatted"
+        "Vitesse d'écriture:$write_speed_formatted"
+        "Vitesse de lecture:$read_speed_formatted"
+            )
+            
+            format_table "Résultats Disque" "${metrics[@]}"
 }
 
 # Fonction pour le benchmark réseau
 benchmark_network() {
-    log_result "\n${BLUE}=== BENCHMARK RÉSEAU ===${NC}"
+    modern_header "BENCHMARK RÉSEAU" $CYAN $SYMBOL_NETWORK
     
-    # Variables par défaut
-    local avg_ping=0
-    local download_speed=0
-    local upload_speed=0
-    local speedtest_failed=true
+    echo -e "${WHITE}${BOLD}Test de performance réseau...${NC}"
     
-    # Test de ping simple vers Google DNS et Cloudflare
-    log_result "${YELLOW}Test de latence réseau...${NC}"
+    # Vérifier la connexion Internet
+    echo -e "${YELLOW}${SYMBOL_INFO} Vérification de la connexion Internet...${NC}"
     
-    # Vérifier que ping est disponible
-    if command -v ping &>/dev/null; then
-        local ping_servers=("8.8.8.8" "1.1.1.1")
-        local total_ping=0
-        local ping_count=0
+    # Variables pour stocker les résultats
+    local ping_value="N/A"
+    local download_speed="N/A"
+    local upload_speed="N/A"
+    local jitter="N/A"
+    local latency="N/A"
+    
+    # Test ping vers Google DNS
+    if ping -c 1 8.8.8.8 &>/dev/null; then
+        echo -e "${GREEN}${SYMBOL_CHECK} Connexion Internet disponible${NC}"
         
-        for server in "${ping_servers[@]}"; do
-            log_result "  Test ping vers $server..."
+        # Mesurer le ping
+        echo -e "${YELLOW}${BOLD}→ Test de latence en cours...${NC}"
+        show_progress 0
+        
+        # Faire plusieurs pings et calculer la moyenne et jitter
+        local ping_sum=0
+        local ping_count=10
+        local current=0
+        local prev_ping=0
+        local jitter_sum=0
+        local jitter_count=0
+        local ping_values=()
+        
+        for i in $(seq 1 $ping_count); do
+            local ping_time=$(ping -c 1 8.8.8.8 | grep 'time=' | cut -d '=' -f 4 | cut -d ' ' -f 1)
+            if [[ -n "$ping_time" ]]; then
+                ping_sum=$(echo "$ping_sum + $ping_time" | bc)
+                ping_values+=("$ping_time")
+                
+                # Calculer le jitter (variation de la latence)
+                if [[ $i -gt 1 ]]; then
+                    local diff=$(echo "scale=2; ($ping_time - $prev_ping)^2" | bc)
+                    jitter_sum=$(echo "$jitter_sum + $diff" | bc)
+                    jitter_count=$((jitter_count + 1))
+                fi
+                prev_ping=$ping_time
+            fi
+            current=$((i * 100 / ping_count))
+            show_progress $current
+            sleep 0.2
+        done
+        
+        show_progress 100
+        ping_value=$(echo "scale=2; $ping_sum / $ping_count" | bc)
+        
+        # Calculer le jitter (écart type)
+        if [[ $jitter_count -gt 0 ]]; then
+            jitter=$(echo "scale=2; sqrt($jitter_sum / $jitter_count)" | bc)
+        else
+            jitter="0.00"
+        fi
+        
+        echo -e "\n${GREEN}${SYMBOL_CHECK} Latence moyenne: ${WHITE}${ping_value}${NC} ms"
+        
+        # Test de téléchargement avec plusieurs sources
+        echo -e "${YELLOW}${BOLD}→ Test de téléchargement en cours...${NC}"
+        show_progress 0
+        
+        # Utiliser plusieurs serveurs pour plus de fiabilité
+        local dl_speeds=()
+        local dl_servers=(
+            "https://speed.cloudflare.com/__down?bytes=10000000"
+            "https://speedtest.net/mini/speedtest/random1000x1000.jpg"
+            "https://proof.ovh.net/files/10Mb.dat"
+        )
+        
+        for ((i=0; i<${#dl_servers[@]}; i++)); do
+            local url="${dl_servers[$i]}"
+            local start_time=$(date +%s.%N)
+            curl -s -o /dev/null "$url" &
+            local curl_pid=$!
             
-            # Essayer ping avec plus de paquets pour une meilleure précision
-            local ping_cmd="ping -c 5 $server"
-            local ping_result=""
+            # Afficher progression
+            local server_progress=0
+            while kill -0 $curl_pid 2>/dev/null; do
+                server_progress=$((server_progress + 5))
+                [ $server_progress -gt 95 ] && server_progress=95
+                local total_progress=$(( (i * 100 + server_progress) / ${#dl_servers[@]} ))
+                show_progress $total_progress
+                sleep 0.1
+            done
             
-            # Exécution du ping avec gestion d'erreur
-            ping_result=$($ping_cmd 2>/dev/null | grep -i "avg\|moyenne" | grep -o "[0-9.]\+/[0-9.]\+/[0-9.]\+" | cut -d/ -f2)
+            wait $curl_pid
+            local end_time=$(date +%s.%N)
+            local time_diff=$(echo "$end_time - $start_time" | bc)
             
-            if [ -n "$ping_result" ] && [ "$ping_result" != "0" ]; then
-                log_result "    Latence: ${ping_result} ms"
-                # Addition simple pour éviter les erreurs avec bc
-                total_ping=$(echo "$total_ping + $ping_result" | bc 2>/dev/null || echo "$total_ping")
-                ping_count=$((ping_count + 1))
-            else
-                log_result "    ${RED}Échec du test ping vers $server${NC}"
+            # Taille en Mo divisée par temps en secondes = Mo/s
+            local size_mb=10 # Taille approximative en Mo
+            if [[ "$time_diff" != "0" && "$time_diff" != "0.00" ]]; then
+                local speed=$(echo "scale=2; $size_mb / $time_diff" | bc)
+                if [[ -n "$speed" && "$speed" != "0" ]]; then
+                    dl_speeds+=("$speed")
+                fi
             fi
         done
         
-        # Calcul de la moyenne (avec protection)
-        if [ $ping_count -gt 0 ]; then
-            avg_ping=$(echo "scale=2; $total_ping / $ping_count" | bc 2>/dev/null || echo "0")
-            log_result "  Latence moyenne: ${avg_ping} ms"
-        else
-            log_result "  ${RED}Impossible de mesurer la latence${NC}"
-        fi
-    else
-        log_result "  ${RED}Commande ping non disponible${NC}"
-    fi
-    
-    # Test de débit amélioré avec speedtest-cli
-    log_result "${YELLOW}Test de débit réseau avancé...${NC}"
-    
-    # Vérifier si speedtest-cli est disponible
-    if command -v speedtest-cli &>/dev/null; then
-        log_result "  Utilisation de speedtest-cli pour une mesure précise..."
+        show_progress 100
         
-        # Exécuter speedtest-cli directement
-        local test_output=$(mktemp)
-        
-        # Exécuter speedtest-cli en mode simple
-        speedtest-cli --simple > "$test_output" 2>&1
-        local speedtest_status=$?
-        
-        # Si speedtest-cli réussit, extraire les résultats
-        if [ $speedtest_status -eq 0 ] && [ -s "$test_output" ]; then
-            download_speed=$(grep -i "Download" "$test_output" | awk '{print $2}' || echo "0")
-            upload_speed=$(grep -i "Upload" "$test_output" | awk '{print $2}' || echo "0")
-            local ping_result=$(grep -i "Ping" "$test_output" | awk '{print $2}' || echo "0")
-            
-            if [ -n "$download_speed" ] && [ "$download_speed" != "0" ]; then
-                log_result "  Débit descendant: ${download_speed} Mbps"
-                log_result "  Débit montant: ${upload_speed} Mbps"
-                log_result "  Ping (speedtest-cli): ${ping_result} ms"
-                speedtest_failed=false
-            else
-                log_result "  ${RED}Échec du test speedtest-cli (résultats vides)${NC}"
-                log_result "  Utilisation de la méthode alternative..."
-                speedtest_failed=true
-            fi
-        else
-            log_result "  ${RED}Échec du test speedtest-cli (code: $speedtest_status)${NC}"
-            log_result "  Contenu de la sortie d'erreur:"
-            cat "$test_output" | while read -r line; do
-                log_result "    $line"
+        # Calculer la moyenne des vitesses de téléchargement
+        if [[ ${#dl_speeds[@]} -gt 0 ]]; then
+            local dl_sum=0
+            for speed in "${dl_speeds[@]}"; do
+                dl_sum=$(echo "$dl_sum + $speed" | bc)
             done
-            log_result "  Utilisation de la méthode alternative..."
-            speedtest_failed=true
+            download_speed=$(echo "scale=2; $dl_sum / ${#dl_speeds[@]}" | bc)
         fi
         
-        rm -f "$test_output" 2>/dev/null
-    else
-        log_result "  ${YELLOW}speedtest-cli non disponible, utilisation de la méthode alternative...${NC}"
-        speedtest_failed=true
-    fi
-    
-    # Si speedtest-cli a échoué, utiliser la méthode manuelle
-    if [ "$speedtest_failed" = true ]; then
-        # Fichiers de test de différentes tailles
-        local test_files=(
-            "http://speedtest.tele2.net/100KB.zip:100"
-            "http://speedtest.tele2.net/1MB.zip:1000"
+        echo -e "\n${GREEN}${SYMBOL_CHECK} Vitesse de téléchargement: ${WHITE}${download_speed}${NC} MB/s"
+        
+        # Test d'upload (simulé - difficile à mesurer précisément sans serveur dédié)
+        echo -e "${YELLOW}${BOLD}→ Test d'upload en cours...${NC}"
+        show_progress 0
+        
+        # Créer un fichier temporaire pour l'upload
+        local temp_file=$(mktemp)
+        dd if=/dev/urandom of="$temp_file" bs=1M count=5 status=none
+        
+        # Upload vers des sites qui acceptent des POST
+        local ul_speeds=()
+        local ul_servers=(
+            "https://httpbin.org/post"
+            "https://postman-echo.com/post"
         )
         
-        # Effectuer les tests de téléchargement
-        local alt_download_speed=$(test_download_speed "${test_files[@]}")
-        download_speed=$alt_download_speed
-    fi
-    
-    # S'assurer que download_speed a une valeur
-    [ -z "$download_speed" ] && download_speed=5
-    
-    # Créer le tableau des résultats
-    if [ -n "$upload_speed" ] && [ "$upload_speed" != "0" ]; then
-        local metrics=(
-            "Latence moyenne:$(printf "%.2f ms" "$avg_ping")"
-            "Débit descendant:$(printf "%s Mbps" "$download_speed")"
-            "Débit montant:$(printf "%s Mbps" "$upload_speed")"
-        )
+        for ((i=0; i<${#ul_servers[@]}; i++)); do
+            local url="${ul_servers[$i]}"
+            local start_time=$(date +%s.%N)
+            curl -s -o /dev/null -F "file=@$temp_file" "$url" &
+            local curl_pid=$!
+            
+            # Afficher progression
+            local server_progress=0
+            while kill -0 $curl_pid 2>/dev/null; do
+                server_progress=$((server_progress + 5))
+                [ $server_progress -gt 95 ] && server_progress=95
+                local total_progress=$(( (i * 100 + server_progress) / ${#ul_servers[@]} ))
+                show_progress $total_progress
+                sleep 0.1
+            done
+            
+            wait $curl_pid
+            local end_time=$(date +%s.%N)
+            local time_diff=$(echo "$end_time - $start_time" | bc)
+            
+            # Taille en Mo divisée par temps en secondes = Mo/s
+            local size_mb=5 # Taille du fichier en Mo
+            if [[ "$time_diff" != "0" && "$time_diff" != "0.00" ]]; then
+                local speed=$(echo "scale=2; $size_mb / $time_diff" | bc)
+                if [[ -n "$speed" && "$speed" != "0" ]]; then
+                    ul_speeds+=("$speed")
+                fi
+            fi
+        done
+        
+        # Nettoyer le fichier temporaire
+        rm -f "$temp_file"
+        
+        show_progress 100
+        
+        # Calculer la moyenne des vitesses d'upload
+        if [[ ${#ul_speeds[@]} -gt 0 ]]; then
+            local ul_sum=0
+            for speed in "${ul_speeds[@]}"; do
+                ul_sum=$(echo "$ul_sum + $speed" | bc)
+            done
+            upload_speed=$(echo "scale=2; $ul_sum / ${#ul_speeds[@]}" | bc)
+        fi
+        
+        echo -e "\n${GREEN}${SYMBOL_CHECK} Vitesse d'upload: ${WHITE}${upload_speed}${NC} MB/s"
+        
     else
-        local metrics=(
-            "Latence moyenne:$(printf "%.2f ms" "$avg_ping")"
-            "Débit descendant:$(printf "%s Mbps" "$download_speed")"
-        )
+        echo -e "${RED}${SYMBOL_CROSS} Pas de connexion Internet disponible${NC}"
     fi
     
-    format_table "Résultats Réseau" "${metrics[@]}"
-    
-    log_result "${GREEN}Benchmark réseau terminé${NC}"
+    # Formater les résultats pour assurer un alignement parfait
+    local ping_formatted=$(printf "%.2f ms" "$(format_number "$ping_value")")
+    local download_formatted=$(printf "%.2f MB/s" "$(format_number "$download_speed")")
+    local upload_formatted=$(printf "%.2f MB/s" "$(format_number "$upload_speed")")
+    local jitter_formatted=$(printf "%.2f ms" "$(format_number "$jitter")")
+            
+            # Préparer les données pour le tableau
+            local metrics=(
+        "Latence (ping):$ping_formatted"
+        "Téléchargement:$download_formatted"
+        "Upload:$upload_formatted"
+        "Jitter:$jitter_formatted"
+            )
+            
+            format_table "Résultats Réseau" "${metrics[@]}"
 }
 
 # Fonction pour tester la vitesse de téléchargement
@@ -2050,30 +2134,194 @@ schedule_benchmark() {
 
 # Fonction pour afficher un résumé final des benchmarks
 show_summary() {
-    log_result "\n${BLUE}=== RÉSUMÉ DES BENCHMARKS ===${NC}"
+    clear
+    echo
+    center_text "$LOGO_TEXT" "$CYAN"
+    echo
+    center_text "RÉSUMÉ DES BENCHMARKS" "$GREEN"
+    echo
     
-    # Récupérer les résultats de chaque test depuis le fichier de log
-    local cpu_perf=$(grep -A10 'Résultats CPU' "$LOG_FILE" | grep -i 'opérations/sec' | head -1 | awk -F'|' '{print $NF}' | tr -d ' ' || echo "N/A")
-    local mem_perf=$(grep -A10 'Résultats Mémoire' "$LOG_FILE" | grep -i 'vitesse de transfert' | head -1 | awk -F'|' '{print $NF}' | tr -d ' ' || echo "N/A")
-    local disk_read=$(grep -A10 'Résultats Disque' "$LOG_FILE" | grep -i 'vitesse de lecture' | head -1 | awk -F'|' '{print $NF}' | tr -d ' ' || echo "N/A")
-    local disk_write=$(grep -A10 'Résultats Disque' "$LOG_FILE" | grep -i 'vitesse d.écriture' | head -1 | awk -F'|' '{print $NF}' | tr -d ' ' || echo "N/A")
-    local net_speed=$(grep -A10 'Résultats Réseau' "$LOG_FILE" | grep -i 'débit descendant' | head -1 | awk -F'|' '{print $NF}' | tr -d ' ' || echo "N/A")
+    local system_info=$(get_system_info)
+    local ram_info=$(get_ram_info)
+    local cpu_info=$(get_cpu_info_summary)
+    local storage_info=$(get_storage_info)
+    local network_info=$(get_network_info)
     
-    # Créer un tableau récapitulatif des performances
-    local metrics=(
-        "CPU:$cpu_perf"
-        "Mémoire:$mem_perf"
-        "Disque (Lecture):$disk_read"
-        "Disque (Écriture):$disk_write"
-        "Réseau:$net_speed"
-    )
+    # Affichage sous forme de tableau élégant
+    echo -e "${WHITE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    printf "${WHITE}${BOLD}  %-20s │ %-40s ${NC}\n" "CATÉGORIE" "VALEUR"
+    echo -e "${WHITE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
-    format_table "Résumé Global des Performances" "${metrics[@]}"
+    # Afficher les informations système
+    IFS=$'\n'
+    for line in $system_info; do
+        IFS=':' read -r key value <<< "$line"
+        printf "${BLUE}%-20s ${NC}│ ${GREEN}%-40s${NC}\n" "$key" "$value"
+    done
     
-    log_result "\n${GREEN}Tous les benchmarks sont terminés !${NC}"
-    log_result "${YELLOW}Les résultats détaillés ont été enregistrés dans: ${LOG_FILE}${NC}"
-    log_result "${YELLOW}Graphiques générés dans : ${RESULTS_DIR}/benchmark_charts.html${NC}"
-    log_result "${YELLOW}Ouvrez ce fichier dans votre navigateur pour voir les graphiques.${NC}"
+    # Séparer les catégories
+    echo -e "${WHITE}${BOLD}──────────────────────┼──────────────────────────────────────────${NC}"
+    
+    # Afficher les informations CPU
+    for line in $cpu_info; do
+        IFS=':' read -r key value <<< "$line"
+        printf "${YELLOW}%-20s ${NC}│ ${GREEN}%-40s${NC}\n" "$key" "$value"
+    done
+    
+    # Séparer les catégories
+    echo -e "${WHITE}${BOLD}──────────────────────┼──────────────────────────────────────────${NC}"
+    
+    # Afficher les informations RAM
+    for line in $ram_info; do
+        IFS=':' read -r key value <<< "$line"
+        printf "${MAGENTA}%-20s ${NC}│ ${GREEN}%-40s${NC}\n" "$key" "$value"
+    done
+    
+    # Séparer les catégories
+    echo -e "${WHITE}${BOLD}──────────────────────┼──────────────────────────────────────────${NC}"
+    
+    # Afficher les informations stockage
+    for line in $storage_info; do
+        IFS=':' read -r key value <<< "$line"
+        printf "${CYAN}%-20s ${NC}│ ${GREEN}%-40s${NC}\n" "$key" "$value"
+    done
+    
+    # Séparer les catégories
+    echo -e "${WHITE}${BOLD}──────────────────────┼──────────────────────────────────────────${NC}"
+    
+    # Afficher les informations réseau
+    for line in $network_info; do
+        IFS=':' read -r key value <<< "$line"
+        printf "${RED}%-20s ${NC}│ ${GREEN}%-40s${NC}\n" "$key" "$value"
+    done
+    
+    echo -e "${WHITE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo
+    center_text "Rapport complet sauvegardé dans: $RESULTS_DIR" "$YELLOW"
+    echo
+}
+
+# Fonction pour obtenir des informations résumées sur le CPU
+get_cpu_info_summary() {
+    local cpu_model=$(grep "model name" /proc/cpuinfo | head -n 1 | cut -d: -f2- | sed 's/^[ \t]*//')
+    local cpu_cores=$(grep -c "processor" /proc/cpuinfo)
+    local cpu_freq=$(grep "cpu MHz" /proc/cpuinfo | head -n 1 | cut -d: -f2- | sed 's/^[ \t]*//' | cut -d. -f1)
+    local cpu_temp=$(get_cpu_temp)
+    local cpu_benchmark=$(get_last_benchmark_value "cpu_score")
+    
+    echo "Modèle CPU:$cpu_model"
+    echo "Nombre de cœurs:$cpu_cores"
+    echo "Fréquence:${cpu_freq} MHz"
+    echo "Température:${cpu_temp}°C"
+    
+    if [ -n "$cpu_benchmark" ]; then
+        echo "Score CPU:$cpu_benchmark"
+    fi
+}
+
+# Fonction pour obtenir des informations résumées sur la RAM
+get_ram_info() {
+    local total_mem=$(free -m | grep "Mem:" | awk '{print $2}')
+    local used_mem=$(free -m | grep "Mem:" | awk '{print $3}')
+    local memory_benchmark=$(get_last_benchmark_value "memory_score")
+    
+    echo "Mémoire totale:${total_mem} MB"
+    echo "Mémoire utilisée:${used_mem} MB"
+    
+    if [ -n "$memory_benchmark" ]; then
+        echo "Score Mémoire:$memory_benchmark MB/s"
+    fi
+}
+
+# Fonction pour obtenir des informations résumées sur le stockage
+get_storage_info() {
+    local root_size=$(df -h / | tail -n 1 | awk '{print $2}')
+    local root_used=$(df -h / | tail -n 1 | awk '{print $3}')
+    local root_percent=$(df -h / | tail -n 1 | awk '{print $5}')
+    local disk_read=$(get_last_benchmark_value "disk_read")
+    local disk_write=$(get_last_benchmark_value "disk_write")
+    
+    echo "Espace disque total:$root_size"
+    echo "Espace utilisé:$root_used ($root_percent)"
+    
+    if [ -n "$disk_read" ]; then
+        echo "Vitesse lecture:$disk_read MB/s"
+    fi
+    
+    if [ -n "$disk_write" ]; then
+        echo "Vitesse écriture:$disk_write MB/s"
+    fi
+}
+
+# Fonction pour obtenir des informations résumées sur le réseau
+get_network_info() {
+    local primary_ip=$(get_primary_ip)
+    local primary_interface=$(get_primary_interface)
+    local download_speed=$(get_last_benchmark_value "network_download")
+    local upload_speed=$(get_last_benchmark_value "network_upload")
+    local ping=$(get_last_benchmark_value "network_ping")
+    
+    echo "Interface réseau:$primary_interface"
+    echo "Adresse IP:$primary_ip"
+    
+    if [ -n "$download_speed" ]; then
+        echo "Téléchargement:$download_speed MB/s"
+    fi
+    
+    if [ -n "$upload_speed" ]; then
+        echo "Upload:$upload_speed MB/s"
+    fi
+    
+    if [ -n "$ping" ]; then
+        echo "Latence:$ping ms"
+    fi
+}
+
+# Fonction pour récupérer la dernière valeur de benchmark
+get_last_benchmark_value() {
+    local metric_name="$1"
+    local db_file="$RESULTS_DIR/benchmark_results.db"
+    
+    if [ ! -f "$db_file" ]; then
+        return
+    fi
+    
+    local result=$(sqlite3 "$db_file" "SELECT value FROM benchmark_results WHERE metric='$metric_name' ORDER BY timestamp DESC LIMIT 1" 2>/dev/null)
+    
+    if [ -n "$result" ]; then
+        echo "$result"
+    fi
+}
+
+# Fonction pour obtenir l'interface réseau principale
+get_primary_interface() {
+    # Déterminer l'interface principale (celle avec la route par défaut)
+    local primary_iface=$(ip route | grep default | awk '{print $5}' | head -n 1)
+    
+    # Si aucune interface trouvée, essayer une autre approche
+    if [ -z "$primary_iface" ]; then
+        # Chercher des interfaces actives
+        primary_iface=$(ip -o link show up | grep -v "lo:" | awk -F': ' '{print $2}' | head -n 1)
+    fi
+    
+    echo "$primary_iface"
+}
+
+# Fonction pour obtenir l'adresse IP principale
+get_primary_ip() {
+    local primary_iface=$(get_primary_interface)
+    local ip_addr=""
+    
+    if [ -n "$primary_iface" ]; then
+        ip_addr=$(ip -4 addr show dev "$primary_iface" | grep -oP 'inet \K[\d.]+' | head -n 1)
+    fi
+    
+    # Si toujours vide, essayer une autre approche
+    if [ -z "$ip_addr" ]; then
+        ip_addr=$(hostname -I | awk '{print $1}')
+    fi
+    
+    echo "$ip_addr"
 }
 
 # Fonction principale
@@ -2101,6 +2349,9 @@ main() {
     
     # Créer le répertoire des résultats s'il n'existe pas
     mkdir -p "$RESULTS_DIR"
+    
+    # Installation des dépendances nécessaires 
+    install_dependencies
     
     # Installation des paquets requis
     install_packages
@@ -2131,4 +2382,162 @@ main() {
 }
 
 # Exécution du script
-main "$@"
+main "$@" 
+
+# Fonction pour centrer du texte avec couleur
+center_text() {
+    local text="$1"
+    local color="$2"
+    local term_width=$(tput cols 2>/dev/null || echo 80)
+    local text_width=${#text}
+    local padding_total=$((term_width - text_width))
+    local padding_left=$((padding_total / 2))
+    
+    printf "%${padding_left}s" ""
+    echo -e "${color}${text}${NC}"
+}
+
+# =====================================================
+# Script de Benchmarking et Monitoring pour Raspberry Pi
+# =====================================================
+
+# Arrêt en cas d'erreur
+set -e
+
+# Couleurs pour l'affichage amélioré
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+ORANGE='\033[38;5;208m'
+LIME='\033[38;5;119m'
+MAGENTA='\033[38;5;201m'
+TEAL='\033[38;5;6m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+
+# Fonction pour installer les dépendances nécessaires
+install_dependencies() {
+    echo -e "${YELLOW}${BOLD}Vérification et installation des dépendances...${NC}"
+    
+    # Détection de la plateforme
+    case "$(uname -s)" in
+        Linux*)
+            if command -v apt-get &> /dev/null; then
+                echo -e "${CYAN}Système basé sur Debian/Ubuntu détecté.${NC}"
+                
+                # Vérifier sysbench
+                if ! command -v sysbench &> /dev/null; then
+                    echo -e "${YELLOW}Installation de sysbench...${NC}"
+                    sudo apt-get update
+                    sudo apt-get install -y sysbench
+                else
+                    echo -e "${GREEN}sysbench est déjà installé.${NC}"
+                fi
+                
+                # Vérifier sqlite3
+                if ! command -v sqlite3 &> /dev/null; then
+                    echo -e "${YELLOW}Installation de sqlite3...${NC}"
+                    sudo apt-get install -y sqlite3
+                else
+                    echo -e "${GREEN}sqlite3 est déjà installé.${NC}"
+                fi
+                
+                # Vérifier bc
+                if ! command -v bc &> /dev/null; then
+                    echo -e "${YELLOW}Installation de bc...${NC}"
+                    sudo apt-get install -y bc
+                else
+                    echo -e "${GREEN}bc est déjà installé.${NC}"
+                fi
+                
+                # Vérifier iperf3 pour les tests réseau
+                if ! command -v iperf3 &> /dev/null; then
+                    echo -e "${YELLOW}Installation de iperf3...${NC}"
+                    sudo apt-get install -y iperf3
+                else
+                    echo -e "${GREEN}iperf3 est déjà installé.${NC}"
+                fi
+            elif command -v yum &> /dev/null; then
+                echo -e "${CYAN}Système basé sur Red Hat/CentOS/Fedora détecté.${NC}"
+                
+                # Vérifier sysbench
+                if ! command -v sysbench &> /dev/null; then
+                    echo -e "${YELLOW}Installation de sysbench...${NC}"
+                    sudo yum install -y epel-release
+                    sudo yum install -y sysbench
+                else
+                    echo -e "${GREEN}sysbench est déjà installé.${NC}"
+                fi
+                
+                # Vérifier sqlite3
+                if ! command -v sqlite3 &> /dev/null; then
+                    echo -e "${YELLOW}Installation de sqlite3...${NC}"
+                    sudo yum install -y sqlite
+                else
+                    echo -e "${GREEN}sqlite3 est déjà installé.${NC}"
+                fi
+                
+                # Vérifier bc
+                if ! command -v bc &> /dev/null; then
+                    echo -e "${YELLOW}Installation de bc...${NC}"
+                    sudo yum install -y bc
+                else
+                    echo -e "${GREEN}bc est déjà installé.${NC}"
+                fi
+                
+                # Vérifier iperf3 pour les tests réseau
+                if ! command -v iperf3 &> /dev/null; then
+                    echo -e "${YELLOW}Installation de iperf3...${NC}"
+                    sudo yum install -y iperf3
+                else
+                    echo -e "${GREEN}iperf3 est déjà installé.${NC}"
+                fi
+            fi
+            ;;
+        Darwin*)
+            echo -e "${CYAN}Système macOS détecté.${NC}"
+            
+            # Vérifier si Homebrew est installé
+            if ! command -v brew &> /dev/null; then
+                echo -e "${YELLOW}Installation de Homebrew...${NC}"
+                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            else
+                echo -e "${GREEN}Homebrew est déjà installé.${NC}"
+            fi
+            
+            # Vérifier sysbench
+            if ! command -v sysbench &> /dev/null; then
+                echo -e "${YELLOW}Installation de sysbench...${NC}"
+                brew install sysbench
+            else
+                echo -e "${GREEN}sysbench est déjà installé.${NC}"
+            fi
+            
+            # Vérifier sqlite3
+            if ! command -v sqlite3 &> /dev/null; then
+                echo -e "${YELLOW}Installation de sqlite3...${NC}"
+                brew install sqlite
+            else
+                echo -e "${GREEN}sqlite3 est déjà installé.${NC}"
+            fi
+            
+            # Vérifier iperf3 pour les tests réseau
+            if ! command -v iperf3 &> /dev/null; then
+                echo -e "${YELLOW}Installation de iperf3...${NC}"
+                brew install iperf3
+            else
+                echo -e "${GREEN}iperf3 est déjà installé.${NC}"
+            fi
+            ;;
+        *)
+            echo -e "${RED}Système d'exploitation non pris en charge.${NC}"
+            return 1
+            ;;
+    esac
+    
+    echo -e "${GREEN}${BOLD}Toutes les dépendances sont installées !${NC}"
+}
