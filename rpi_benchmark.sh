@@ -2201,6 +2201,39 @@ show_summary() {
     echo
 }
 
+# Fonction pour obtenir des informations système de base
+get_system_info() {
+    local hostname=$(hostname)
+    local os_type=$(uname -s)
+    local os_version=""
+    local kernel_version=$(uname -r)
+    
+    case $PLATFORM in
+        "macos")
+            os_version=$(sw_vers -productVersion)
+            ;;
+        "raspbian")
+            if [ -f /etc/os-release ]; then
+                os_version=$(grep "PRETTY_NAME" /etc/os-release | cut -d= -f2 | tr -d '"')
+            fi
+            ;;
+        *)
+            if [ -f /etc/os-release ]; then
+                os_version=$(grep "PRETTY_NAME" /etc/os-release | cut -d= -f2 | tr -d '"')
+            fi
+            ;;
+    esac
+    
+    echo "Nom d'hôte:$hostname"
+    echo "Système:$os_type"
+    echo "Version:$os_version"
+    echo "Noyau:$kernel_version"
+    
+    # Uptime
+    local uptime=$(uptime | cut -d ',' -f1 | cut -d ' ' -f4-)
+    echo "Uptime:$uptime"
+}
+
 # Fonction pour obtenir des informations résumées sur le CPU
 get_cpu_info_summary() {
     local cpu_model=$(grep "model name" /proc/cpuinfo | head -n 1 | cut -d: -f2- | sed 's/^[ \t]*//')
@@ -2394,27 +2427,6 @@ center_text() {
     echo -e "${color}${text}${NC}"
 }
 
-# =====================================================
-# Script de Benchmarking et Monitoring pour Raspberry Pi
-# =====================================================
-
-# Arrêt en cas d'erreur
-set -e
-
-# Couleurs pour l'affichage amélioré
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-WHITE='\033[1;37m'
-ORANGE='\033[38;5;208m'
-LIME='\033[38;5;119m'
-MAGENTA='\033[38;5;201m'
-TEAL='\033[38;5;6m'
-NC='\033[0m' # No Color
-BOLD='\033[1m'
 
 # Fonction pour installer les dépendances nécessaires
 install_dependencies() {
