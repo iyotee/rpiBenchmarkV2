@@ -1115,7 +1115,10 @@ benchmark_network() {
             download_speed=$(echo "scale=2; $dl_sum / ${#dl_speeds[@]}" | bc)
         fi
         
-        echo -e "\n${GREEN}${SYMBOL_CHECK} Vitesse de téléchargement: ${WHITE}${download_speed}${NC} MB/s"
+        # Convertir MB/s en Mbps pour l'affichage dans le tableau et enregistrement
+        local download_mbps=$(echo "scale=2; $download_speed * 8" | bc)
+        
+        echo -e "\n${GREEN}${SYMBOL_CHECK} Vitesse de téléchargement: ${WHITE}${download_speed}${NC} MB/s (${WHITE}${download_mbps}${NC} Mbps)"
         
         # Test d'upload (simulé - difficile à mesurer précisément sans serveur dédié)
         echo -e "${YELLOW}${BOLD}→ Test d'upload en cours...${NC}"
@@ -1176,27 +1179,69 @@ benchmark_network() {
             upload_speed=$(echo "scale=2; $ul_sum / ${#ul_speeds[@]}" | bc)
         fi
         
-        echo -e "\n${GREEN}${SYMBOL_CHECK} Vitesse d'upload: ${WHITE}${upload_speed}${NC} MB/s"
+        # Convertir MB/s en Mbps pour l'affichage dans le tableau et enregistrement
+        local upload_mbps=$(echo "scale=2; $upload_speed * 8" | bc)
+        
+        echo -e "\n${GREEN}${SYMBOL_CHECK} Vitesse d'upload: ${WHITE}${upload_speed}${NC} MB/s (${WHITE}${upload_mbps}${NC} Mbps)"
         
     else
         echo -e "${RED}${SYMBOL_CROSS} Pas de connexion Internet disponible${NC}"
     fi
     
+    # Enregistrer les métriques importantes pour l'accès plus tard
+    save_metric_to_db "network_download" "$download_mbps"
+    save_metric_to_db "network_upload" "$upload_mbps"
+    save_metric_to_db "network_ping" "$ping_value"
+    
     # Formater les résultats pour assurer un alignement parfait
     local ping_formatted=$(printf "%.2f ms" "$(format_number "$ping_value")")
-    local download_formatted=$(printf "%.2f MB/s" "$(format_number "$download_speed")")
-    local upload_formatted=$(printf "%.2f MB/s" "$(format_number "$upload_speed")")
+    local download_formatted=$(printf "%.2f MB/s (%.2f Mbps)" "$(format_number "$download_speed")" "$(format_number "$download_mbps")")
+    local upload_formatted=$(printf "%.2f MB/s (%.2f Mbps)" "$(format_number "$upload_speed")" "$(format_number "$upload_mbps")")
     local jitter_formatted=$(printf "%.2f ms" "$(format_number "$jitter")")
-            
-            # Préparer les données pour le tableau
-            local metrics=(
+    
+    # Préparer les données pour le tableau
+    local metrics=(
         "Latence (ping):$ping_formatted"
         "Téléchargement:$download_formatted"
         "Upload:$upload_formatted"
         "Jitter:$jitter_formatted"
-            )
-            
-            format_table "Résultats Réseau" "${metrics[@]}"
+    )
+    
+    format_table "Résultats Réseau" "${metrics[@]}"
+    
+    # Enregistrer les métriques pour que le rapport les trouve facilement
+    {
+        echo "RÉSEAU - MÉTRIQUES CLÉS:"
+        echo "Latence moyenne (ms): $ping_value"
+        echo "Débit descendant (Mbps): $download_mbps"
+        echo "Débit montant (Mbps): $upload_mbps"
+        echo "Jitter (ms): $jitter"
+    } >> "$LOG_FILE"
+}
+
+# Fonction pour enregistrer une métrique directement dans la base de données
+save_metric_to_db() {
+    local metric_name="$1"
+    local metric_value="$2"
+    local db_file="$RESULTS_DIR/benchmark_results.db"
+    local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+    
+    # Créer la table si elle n'existe pas
+    if ! [ -f "$db_file" ]; then
+        mkdir -p "$RESULTS_DIR"
+        sqlite3 "$db_file" "CREATE TABLE benchmark_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            metric TEXT,
+            value REAL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );"
+    fi
+    
+    # Enregistrer la métrique
+    if [ -n "$metric_value" ] && [ "$metric_value" != "N/A" ]; then
+        sqlite3 "$db_file" "INSERT INTO benchmark_results (metric, value, timestamp) VALUES ('$metric_name', $metric_value, '$timestamp');"
+        echo "Métrique $metric_name = $metric_value enregistrée" >> "$LOG_FILE"
+    fi
 }
 
 # Fonction pour tester la vitesse de téléchargement
@@ -1321,23 +1366,44 @@ generate_charts() {
     local html_file="$RESULTS_DIR/benchmark_charts.html"
     local date_formatted=$(date '+%d/%m/%Y à %H:%M')
     
-    # Extraire plus de données pour les graphiques
-    local cpu_single_thread=$(grep -A 10 "Résultats CPU" "$LOG_FILE" | grep "Opérations/sec" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local cpu_multi_thread=$(grep -A 10 "Résultats Threads" "$LOG_FILE" | grep "Opérations totales" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local cpu_temps=$(grep -A 10 "Résultats CPU" "$LOG_FILE" | grep "Temps total" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local cpu_threads_latency=$(grep -A 10 "Résultats Threads" "$LOG_FILE" | grep "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    # Extraire plus de données pour les graphiques - Utiliser des meilleures regex et vérifier les fichiers logs
+    local cpu_single_thread=$(grep -A 20 "Résultats CPU" "$LOG_FILE" | grep -i "Opérations/sec" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local cpu_temps=$(grep -A 20 "Résultats CPU" "$LOG_FILE" | grep -i "Temps total" | head -1 | grep -o "[0-9.]\+" || echo "0")
     
-    local memory_speed=$(grep -A 10 "Résultats Mémoire" "$LOG_FILE" | grep "Vitesse de transfert" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local memory_used=$(grep -A 10 "Résultats Mémoire" "$LOG_FILE" | grep "Mémoire utilisée" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local memory_free=$(grep -A 10 "Résultats Mémoire" "$LOG_FILE" | grep "Mémoire libre" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local memory_ratio=$(grep -A 10 "Résultats Mémoire" "$LOG_FILE" | grep "Ratio utilisation" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    # S'assurer d'avoir les données correctes des threads
+    local cpu_multi_thread=$(grep -A 20 "Résultats Threads" "$LOG_FILE" | grep -i "Opérations totales" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local cpu_threads_latency=$(grep -A 20 "Résultats Threads" "$LOG_FILE" | grep -i "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
     
-    local disk_write=$(grep -A 10 "Résultats Disque" "$LOG_FILE" | grep "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local disk_read=$(grep -A 10 "Résultats Disque" "$LOG_FILE" | grep "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    # Vérifier les données de mémoire
+    local memory_speed=$(grep -A 20 "Résultats Mémoire" "$LOG_FILE" | grep -i "Vitesse de transfert" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local memory_used=$(free -m | grep "Mem:" | awk '{print $3}' || echo "0")
+    local memory_free=$(free -m | grep "Mem:" | awk '{print $4}' || echo "0")
     
-    local network_download=$(grep -A 10 "Résultats Réseau" "$LOG_FILE" | grep "Débit descendant" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local network_upload=$(grep -A 10 "Résultats Réseau" "$LOG_FILE" | grep "Débit montant" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local network_ping=$(grep -A 10 "Résultats Réseau" "$LOG_FILE" | grep "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    # Vérifier les données de disque
+    local disk_write=$(grep -A 20 "Résultats Disque" "$LOG_FILE" | grep -i "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local disk_read=$(grep -A 20 "Résultats Disque" "$LOG_FILE" | grep -i "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    
+    # Vérifier les données de réseau
+    local network_download=$(grep -A 20 "Résultats Réseau" "$LOG_FILE" | grep -i "Débit descendant" | head -1 | grep -o "[0-9.]\+" || echo "0") 
+    local network_upload=$(grep -A 20 "Résultats Réseau" "$LOG_FILE" | grep -i "Débit montant" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local network_ping=$(grep -A 20 "Résultats Réseau" "$LOG_FILE" | grep -i "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    
+    # Logs de débogage pour voir les valeurs extraites
+    {
+        echo "Valeurs extraites pour les graphiques:"
+        echo "CPU single thread: $cpu_single_thread"
+        echo "CPU temps: $cpu_temps"
+        echo "CPU multi thread: $cpu_multi_thread"
+        echo "CPU threads latency: $cpu_threads_latency"
+        echo "Memory speed: $memory_speed"
+        echo "Memory used: $memory_used"
+        echo "Memory free: $memory_free"
+        echo "Disk write: $disk_write"
+        echo "Disk read: $disk_read"
+        echo "Network download: $network_download"
+        echo "Network upload: $network_upload"
+        echo "Network ping: $network_ping"
+    } >> "$LOG_FILE"
     
     # Créer le fichier HTML avec la date et l'heure actuelles
     cat > "$html_file" << EOF
@@ -1500,7 +1566,7 @@ generate_charts() {
                 transferSpeed: ${memory_speed},
                 used: ${memory_used},
                 free: ${memory_free},
-                ratio: ${memory_ratio}
+                ratio: 0
             },
             disk: {
                 writeSpeed: ${disk_write},
@@ -1520,6 +1586,11 @@ EOF
         const commonOptions = {
             responsive: true,
             maintainAspectRatio: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            },
             plugins: {
                 legend: {
                     position: 'bottom',
@@ -1560,7 +1631,7 @@ EOF
             options: commonOptions
         });
 
-        // Graphique Threads
+        // Graphique Threads - S'assurer que les deux valeurs sont affichées
         new Chart(document.getElementById('threadsChart'), {
             type: 'bar',
             data: {
@@ -1573,10 +1644,21 @@ EOF
                     borderWidth: 1
                 }]
             },
-            options: commonOptions
+            options: {
+                ...commonOptions,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Valeur'
+                        }
+                    }
+                }
+            }
         });
 
-        // Graphique Mémoire
+        // Graphique Mémoire - S'assurer que la vitesse de transfert est affichée
         new Chart(document.getElementById('memoryChart'), {
             type: 'bar',
             data: {
@@ -1589,7 +1671,18 @@ EOF
                     borderWidth: 1
                 }]
             },
-            options: commonOptions
+            options: {
+                ...commonOptions,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'MB/s'
+                        }
+                    }
+                }
+            }
         });
         
         // Graphique Utilisation Mémoire
@@ -1650,10 +1743,21 @@ EOF
                     borderWidth: 1
                 }]
             },
-            options: commonOptions
+            options: {
+                ...commonOptions,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'MB/s'
+                        }
+                    }
+                }
+            }
         });
 
-        // Graphique Réseau
+        // Graphique Réseau - S'assurer que les trois valeurs sont affichées
         new Chart(document.getElementById('networkChart'), {
             type: 'bar',
             data: {
@@ -1674,7 +1778,18 @@ EOF
                     borderWidth: 1
                 }]
             },
-            options: commonOptions
+            options: {
+                ...commonOptions,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Valeur'
+                        }
+                    }
+                }
+            }
         });
     </script>
 </body>
@@ -1874,7 +1989,7 @@ save_results_to_db() {
 
 # Fonction pour enregistrer les résultats des benchmarks dans la base de données
 save_benchmark_metrics() {
-    # Vérifier si la table exist
+    # Vérifier si la table existe
     if ! sqlite3 "$RESULTS_DIR/benchmark_results.db" "SELECT name FROM sqlite_master WHERE type='table' AND name='benchmark_results';" | grep -q "benchmark_results"; then
         sqlite3 "$RESULTS_DIR/benchmark_results.db" "CREATE TABLE benchmark_results (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1886,27 +2001,69 @@ save_benchmark_metrics() {
     
     local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
     
-    # Extraire les valeurs du CPU benchmark
-    local cpu_ops=$(grep -A 10 "Résultats CPU" "$LOG_FILE" | grep "Opérations/sec" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local cpu_time=$(grep -A 10 "Résultats CPU" "$LOG_FILE" | grep "Temps total" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local cpu_events=$(grep -A 10 "Résultats CPU" "$LOG_FILE" | grep "Événements" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    # Chercher les derniers résultats dans tous les fichiers logs
+    local latest_log=$(ls -t "$RESULTS_DIR"/*.log 2>/dev/null | head -1)
+    if [ -n "$latest_log" ]; then
+        {
+            echo "Utilisation du log le plus récent pour extraction: $latest_log"
+        } >> "$LOG_FILE"
+        LOG_FILE_SEARCH="$latest_log $LOG_FILE"
+    else
+        LOG_FILE_SEARCH="$LOG_FILE"
+    fi
     
-    # Extraire les valeurs du benchmark threads
-    local threads_ops=$(grep -A 10 "Résultats Threads" "$LOG_FILE" | grep "Opérations totales" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local threads_latency=$(grep -A 10 "Résultats Threads" "$LOG_FILE" | grep "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local threads_time=$(grep -A 10 "Résultats Threads" "$LOG_FILE" | grep "Temps d'exécution" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    # Extraire les valeurs CPU avec une meilleure recherche - élargir la plage de recherche
+    local cpu_ops=$(grep -A 20 "Résultats CPU" $LOG_FILE_SEARCH | grep -i "Opérations/sec" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local cpu_time=$(grep -A 20 "Résultats CPU" $LOG_FILE_SEARCH | grep -i "Temps total" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local cpu_events=$(grep -A 20 "Résultats CPU" $LOG_FILE_SEARCH | grep -i "Événements" | head -1 | grep -o "[0-9.]\+" || echo "0")
     
-    # Extraire les valeurs du benchmark mémoire
-    local memory_speed=$(grep -A 10 "Résultats Mémoire" "$LOG_FILE" | grep "Vitesse de transfert" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    # Extraire les valeurs des threads
+    local threads_ops=$(grep -A 20 "Résultats Threads" $LOG_FILE_SEARCH | grep -i "Opérations totales" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local threads_latency=$(grep -A 20 "Résultats Threads" $LOG_FILE_SEARCH | grep -i "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local threads_time=$(grep -A 20 "Résultats Threads" $LOG_FILE_SEARCH | grep -i "Temps d'exécution" | head -1 | grep -o "[0-9.]\+" || echo "0")
     
-    # Extraire les valeurs du benchmark disque
-    local disk_write=$(grep -A 10 "Résultats Disque" "$LOG_FILE" | grep "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local disk_read=$(grep -A 10 "Résultats Disque" "$LOG_FILE" | grep "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    # Extraire les valeurs mémoire
+    local memory_speed=$(grep -A 20 "Résultats Mémoire" $LOG_FILE_SEARCH | grep -i "Vitesse de transfert" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    if [ "$memory_speed" = "0" ]; then
+        memory_speed=$(grep -A 20 "Mémoire" $LOG_FILE_SEARCH | grep -i "MB/s" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    fi
     
-    # Extraire les valeurs du benchmark réseau
-    local network_download=$(grep -A 10 "Résultats Réseau" "$LOG_FILE" | grep "Débit descendant" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local network_upload=$(grep -A 10 "Résultats Réseau" "$LOG_FILE" | grep "Débit montant" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local network_ping=$(grep -A 10 "Résultats Réseau" "$LOG_FILE" | grep "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    # Extraire les valeurs disque
+    local disk_write=$(grep -A 20 "Résultats Disque" $LOG_FILE_SEARCH | grep -i "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    local disk_read=$(grep -A 20 "Résultats Disque" $LOG_FILE_SEARCH | grep -i "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    
+    # Extraire les valeurs réseau
+    local network_download=$(grep -A 20 "Résultats Réseau" $LOG_FILE_SEARCH | grep -i "Débit descendant" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    if [ "$network_download" = "0" ]; then
+        network_download=$(grep -A 20 "Réseau" $LOG_FILE_SEARCH | grep -i "Téléchargement" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    fi
+    
+    local network_upload=$(grep -A 20 "Résultats Réseau" $LOG_FILE_SEARCH | grep -i "Débit montant" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    if [ "$network_upload" = "0" ]; then
+        network_upload=$(grep -A 20 "Réseau" $LOG_FILE_SEARCH | grep -i "Upload" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    fi
+    
+    local network_ping=$(grep -A 20 "Résultats Réseau" $LOG_FILE_SEARCH | grep -i "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    if [ "$network_ping" = "0" ]; then
+        network_ping=$(grep -A 20 "Réseau" $LOG_FILE_SEARCH | grep -i "Latence:" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    fi
+    
+    # Journaliser les valeurs extraites
+    {
+        echo "Valeurs extraites pour la base de données:"
+        echo "CPU ops: $cpu_ops"
+        echo "CPU time: $cpu_time"
+        echo "CPU events: $cpu_events"
+        echo "Threads ops: $threads_ops"
+        echo "Threads latency: $threads_latency"
+        echo "Threads time: $threads_time"
+        echo "Memory speed: $memory_speed"
+        echo "Disk write: $disk_write"
+        echo "Disk read: $disk_read"
+        echo "Network download: $network_download"
+        echo "Network upload: $network_upload"
+        echo "Network ping: $network_ping"
+    } >> "$LOG_FILE"
     
     # Enregistrer toutes les métriques dans la base de données
     local metrics=(
@@ -1929,6 +2086,9 @@ save_benchmark_metrics() {
         IFS=':' read -r metric_name metric_value <<< "$metric_entry"
         if [ -n "$metric_value" ] && [ "$metric_value" != "0" ]; then
             sqlite3 "$RESULTS_DIR/benchmark_results.db" "INSERT INTO benchmark_results (metric, value, timestamp) VALUES ('$metric_name', $metric_value, '$timestamp');"
+            echo -e "Métrique enregistrée: $metric_name = $metric_value" >> "$LOG_FILE"
+        else
+            echo -e "Métrique ignorée (valeur nulle ou 0): $metric_name" >> "$LOG_FILE"
         fi
     done
     
@@ -1975,21 +2135,21 @@ show_menu() {
         # Menu stylisé moderne
         echo -e "${CYAN}${BOLD}╔══════════════════════════ MENU PRINCIPAL ═══════════════════════════╗${NC}"
         echo -e "${CYAN}${BOLD}║                                                                     ║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_INFO} ${WHITE}1.${NC} ${CYAN}Afficher les informations système${NC}                           ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT} ${WHITE}2.${NC} ${LIME}Exécuter tous les benchmarks${NC}                                ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CPU} ${WHITE}3.${NC} ${CYAN}Benchmark CPU${NC}                                                ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT} ${WHITE}4.${NC} ${CYAN}Benchmark Threads${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_RAM} ${WHITE}5.${NC} ${MAGENTA}Benchmark Mémoire${NC}                                           ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_DISK} ${WHITE}6.${NC} ${YELLOW}Benchmark Disque${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_NETWORK} ${WHITE}7.${NC} ${BLUE}Benchmark Réseau${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_TEMP} ${WHITE}8.${NC} ${RED}Stress Test${NC}                                                ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CHART} ${WHITE}9.${NC} ${GREEN}Exporter les résultats (CSV et JSON)${NC}                     ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CLOCK} ${WHITE}10.${NC} ${PURPLE}Planifier les benchmarks${NC}                                 ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CROSS} ${WHITE}11.${NC} ${RED}Quitter${NC}                                                    ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_INFO}   ${WHITE}1.${NC}   ${CYAN}Afficher les informations système${NC}                           ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT}   ${WHITE}2.${NC}   ${LIME}Exécuter tous les benchmarks${NC}                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CPU}    ${WHITE}3.${NC}    ${CYAN}Benchmark CPU${NC}                                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT}   ${WHITE}4.${NC}   ${CYAN}Benchmark Threads${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_RAM}    ${WHITE}5.${NC}    ${MAGENTA}Benchmark Mémoire${NC}                                           ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_DISK}   ${WHITE}6.${NC}   ${YELLOW}Benchmark Disque${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_NETWORK}    ${WHITE}7.${NC}    ${BLUE}Benchmark Réseau${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_TEMP}   ${WHITE}8.${NC}   ${RED}Stress Test${NC}                                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CHART}  ${WHITE}9.${NC}  ${GREEN}Exporter les résultats (CSV et JSON)${NC}                     ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CLOCK}  ${WHITE}10.${NC} ${PURPLE}Planifier les benchmarks${NC}                                 ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CROSS}  ${WHITE}11.${NC} ${RED}Quitter${NC}                                                    ${CYAN}${BOLD}║${NC}"
         echo -e "${CYAN}${BOLD}║                                                                     ║${NC}"
         echo -e "${CYAN}${BOLD}╚═════════════════════════════════════════════════════════════════════╝${NC}"
         echo ""
-        echo -e "${YELLOW}Entrez votre choix ${WHITE}[1-11]${YELLOW}: ${NC}"
+        echo -e "${PURPLE}Entrez votre choix ${WHITE}[1-11]${PURPLE}: ${NC}"
         
         read -r choice
         case $choice in
@@ -2106,7 +2266,7 @@ EOF
                 # Bouton d'aide pressé, afficher les informations sur le programme
                 dialog --backtitle "RPi Benchmark v2.0" \
                     --title "À propos" \
-                    --msgbox "RPi Benchmark v2.0\n\nUn outil complet pour évaluer les performances de votre Raspberry Pi\n\n© 2023 - Tous droits réservés\n\nDéveloppé avec ❤️ pour la communauté Raspberry Pi" \
+                    --msgbox "RPi Benchmark v2.0\n\nUn outil complet pour évaluer les performances de votre Raspberry Pi\n\n© 2025 - Tous droits réservés\n\nDéveloppé avec ❤️ pour la communauté Raspberry Pi" \
                     12 60
                 continue
             fi
@@ -2161,17 +2321,17 @@ show_enhanced_menu() {
         echo -e "${MAGENTA}${BOLD}╭─────────────────────────────────────────────────────────────────╮${NC}"
         echo -e "${MAGENTA}${BOLD}│${NC}${BG_MAGENTA}${WHITE}${BOLD}                          MENU PRINCIPAL                         ${NC}${MAGENTA}${BOLD}│${NC}"
         echo -e "${MAGENTA}${BOLD}├─────────────────────────────────────────────────────────────────┤${NC}"
-        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_INFO}  ${WHITE}[1]${NC} ${CYAN}Afficher les informations système${NC}               ${MAGENTA}${BOLD}│${NC}"
-        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_BOLT}  ${WHITE}[2]${NC} ${GREEN}Exécuter tous les benchmarks${NC}                   ${MAGENTA}${BOLD}│${NC}"
-        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_CPU}  ${WHITE}[3]${NC} ${BLUE}Benchmark CPU${NC}                                   ${MAGENTA}${BOLD}│${NC}"
-        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_BOLT}  ${WHITE}[4]${NC} ${TEAL}Benchmark Threads${NC}                               ${MAGENTA}${BOLD}│${NC}"
-        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_RAM}  ${WHITE}[5]${NC} ${MAGENTA}Benchmark Mémoire${NC}                              ${MAGENTA}${BOLD}│${NC}"
-        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_DISK}  ${WHITE}[6]${NC} ${YELLOW}Benchmark Disque${NC}                               ${MAGENTA}${BOLD}│${NC}"
-        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_NETWORK}  ${WHITE}[7]${NC} ${BLUE}Benchmark Réseau${NC}                               ${MAGENTA}${BOLD}│${NC}"
-        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_TEMP}  ${WHITE}[8]${NC} ${RED}Stress Test${NC}                                   ${MAGENTA}${BOLD}│${NC}"
-        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_CHART}  ${WHITE}[9]${NC} ${GREEN}Exporter les résultats${NC}                         ${MAGENTA}${BOLD}│${NC}"
-        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_CLOCK} ${WHITE}[10]${NC} ${PURPLE}Planifier les benchmarks${NC}                      ${MAGENTA}${BOLD}│${NC}"
-        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_CROSS} ${WHITE}[11]${NC} ${RED}Quitter${NC}                                         ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_INFO} ${WHITE}[1]${NC}    ${CYAN}Afficher les informations système${NC}               ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_BOLT} ${WHITE}[2]${NC}    ${GREEN}Exécuter tous les benchmarks${NC}                   ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_CPU}  ${WHITE}[3]${NC}    ${BLUE}Benchmark CPU${NC}                                   ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_BOLT} ${WHITE}[4]${NC}    ${TEAL}Benchmark Threads${NC}                               ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_RAM}  ${WHITE}[5]${NC}    ${MAGENTA}Benchmark Mémoire${NC}                              ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_DISK} ${WHITE}[6]${NC}    ${YELLOW}Benchmark Disque${NC}                               ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_NETWORK}  ${WHITE}[7]${NC}    ${BLUE}Benchmark Réseau${NC}                               ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_TEMP} ${WHITE}[8]${NC}    ${RED}Stress Test${NC}                                   ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_CHART}    ${WHITE}[9]${NC}    ${GREEN}Exporter les résultats${NC}                         ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_CLOCK}    ${WHITE}[10]${NC}   ${PURPLE}Planifier les benchmarks${NC}                      ${MAGENTA}${BOLD}│${NC}"
+        echo -e "${MAGENTA}${BOLD}│${NC}  ${LIME}${SYMBOL_CROSS}    ${WHITE}[11]${NC}   ${RED}Quitter${NC}                                         ${MAGENTA}${BOLD}│${NC}"
         echo -e "${MAGENTA}${BOLD}╰─────────────────────────────────────────────────────────────────╯${NC}"
         echo ""
         echo -e "${YELLOW}${BOLD}Entrez votre choix [1-11]:${NC} "
