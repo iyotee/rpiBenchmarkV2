@@ -1741,6 +1741,11 @@ save_results_to_db() {
 
 # Fonction pour modifier run_all_benchmarks pour inclure la génération des graphiques
 run_all_benchmarks() {
+    # Option pour conserver les résultats détaillés dans la console
+    echo -e "${YELLOW}${BOLD}Exécution de tous les benchmarks...${NC}"
+    echo -e "${YELLOW}${BOLD}Les résultats détaillés seront conservés dans la console.${NC}"
+    echo
+    
     benchmark_cpu
     benchmark_threads
     benchmark_memory
@@ -2134,8 +2139,9 @@ schedule_benchmark() {
 
 # Fonction pour afficher un résumé final des benchmarks
 show_summary() {
-    clear
+    # Pas de clear pour conserver les résultats détaillés précédents
     echo
+    echo -e "${WHITE}${BOLD}══════════════════════════════════════════════════════════════════${NC}"
     center_text "$LOGO_TEXT" "$CYAN"
     echo
     center_text "RÉSUMÉ DES BENCHMARKS" "$GREEN"
