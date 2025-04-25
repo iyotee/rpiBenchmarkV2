@@ -2381,9 +2381,6 @@ main() {
     fi
 }
 
-# Exécution du script
-main "$@" 
-
 # Fonction pour centrer du texte avec couleur
 center_text() {
     local text="$1"
@@ -2541,3 +2538,7 @@ install_dependencies() {
     
     echo -e "${GREEN}${BOLD}Toutes les dépendances sont installées !${NC}"
 }
+
+# Exécution du script
+main "$@" 
+
