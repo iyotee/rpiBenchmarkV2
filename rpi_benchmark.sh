@@ -199,17 +199,20 @@ log_result() {
     }
 }
 
-# Formater les tableaux de façon moderne
 format_table() {
     local title=$1
     shift
     local metrics=("$@")
-    
-    # Définir les largeurs fixes
+
     local name_width=35
     local value_width=40
-    
-    # Couleurs pour le tableau moderne
+    local total_width=$((name_width + value_width + 5))  # 5 car 3 séparateurs │ + 2 espaces
+
+    # Bordures modernes
+    local top_left="╭" top_right="╮" bottom_left="╰" bottom_right="╯" horizontal="─"
+    local vertical="│" left_t="├" right_t="┤" cross="┼"
+
+    # Couleurs
     local header_bg=$BG_DARK
     local header_fg=$WHITE
     local row_color=$CYAN
@@ -217,81 +220,70 @@ format_table() {
     local line_color=$GRAY
     local text_color=$WHITE
     local value_color=$LIME
-    
-    # Symboles pour les bordures modernes
-    local top_left="╭"
-    local top_right="╮"
-    local bottom_left="╰"
-    local bottom_right="╯"
-    local horizontal="─"
-    local vertical="│"
-    local left_t="├"
-    local right_t="┤"
-    local cross="┼"
-    local top_t="┬"
-    local bottom_t="┴"
-    
-    # Calculer la largeur totale
-    local total_width=$((name_width + value_width + 3))
-    
-    # Enregistrer les métriques dans le journal, mais pas dans la sortie standard
+
+    # Enregistrement dans log
     {
         echo -e "\n# Données pour $title"
         for metric in "${metrics[@]}"; do
             local name=$(echo "$metric" | cut -d':' -f1)
             local value=$(echo "$metric" | cut -d':' -f2-)
-            # Supprimer les espaces en début et fin de la valeur
             value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
             echo "$name: $value"
         done
     } >> "$LOG_FILE" 2>/dev/null
-    
-    # Afficher le titre du tableau
+
+    # Affichage
     echo ""
     echo -e "${BOLD}${BLUE}${title}${NC}"
-    
+
     # Ligne supérieure
     echo -ne "${line_color}${top_left}"
-    printf "%s" $(printf "%${total_width}s" | tr " " "$horizontal")
+    printf "%s" "$(printf "%${total_width}s" | tr ' ' "$horizontal")"
     echo -e "${top_right}${NC}"
-    
-    # Ligne d'en-tête
+
+    # En-tête
     echo -ne "${line_color}${vertical}${NC}${header_bg}${header_fg}${BOLD}"
-    printf " %-${name_width}s │ %-${value_width}s " "MÉTRIQUE" "VALEUR"
+    printf " %- ${name_width}s " "MÉTRIQUE"
+    echo -ne "${line_color}${vertical}${NC}${header_bg}${header_fg}${BOLD}"
+    printf " %- ${value_width}s " "VALEUR"
     echo -e "${NC}${line_color}${vertical}${NC}"
-    
+
     # Ligne de séparation
     echo -ne "${line_color}${left_t}"
-    printf "%s" $(printf "%${name_width}s" | tr " " "$horizontal")
+    printf "%s" "$(printf "%${name_width}s" | tr ' ' "$horizontal")"
     echo -ne "${cross}"
-    printf "%s" $(printf "%${value_width}s" | tr " " "$horizontal")
+    printf "%s" "$(printf "%${value_width}s" | tr ' ' "$horizontal")"
     echo -e "${right_t}${NC}"
-    
-    # Corps du tableau avec alternance de couleurs
+
+    # Lignes de contenu
     local i=0
     for metric in "${metrics[@]}"; do
         local name=$(echo "$metric" | cut -d':' -f1)
         local value=$(echo "$metric" | cut -d':' -f2-)
-        # Supprimer les espaces en début et fin de la valeur
         value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-        
+
+        # Alternance de couleurs (facultatif)
         if [ $((i % 2)) -eq 0 ]; then
-            background_color=""
+            row_bg=""
         else
-            background_color=""
+            row_bg=""
         fi
-        
-        echo -ne "${line_color}${vertical}${NC}${background_color}"
-        printf " ${text_color}%-${name_width}s${NC}${background_color} ${line_color}${vertical}${NC}${background_color} ${value_color}%-${value_width}s ${NC}${line_color}${vertical}${NC}\n" "$name" "$value"
-        
+
+        echo -ne "${line_color}${vertical}${NC}${row_bg}${text_color}"
+        printf " %- ${name_width}s " "$name"
+        echo -ne "${line_color}${vertical}${NC}${row_bg}${value_color}"
+        printf " %- ${value_width}s " "$value"
+        echo -e "${NC}${line_color}${vertical}${NC}"
+
         i=$((i + 1))
     done
-    
+
     # Ligne inférieure
     echo -ne "${line_color}${bottom_left}"
-    printf "%s" $(printf "%${total_width}s" | tr " " "$horizontal")
+    printf "%s" "$(printf "%${total_width}s" | tr ' ' "$horizontal")"
     echo -e "${bottom_right}${NC}"
 }
+
 
 # Fonction pour obtenir la température CPU avec style moderne
 get_cpu_temp() {
