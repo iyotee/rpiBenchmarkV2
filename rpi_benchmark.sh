@@ -410,7 +410,7 @@ install_dependencies() {
                 echo -e "${YELLOW}Plateforme inconnue, utilisation des paquets Linux génériques${NC}"
                 platform_packages=(stress-ng speedtest-cli dnsutils hdparm python3-pip dialog iperf3)
             fi
-            ;;  
+            ;;
     esac
 
     # Combinaison des listes et recherche des paquets manquants
@@ -819,8 +819,8 @@ benchmark_memory() {
                     echo "Valeurs enregistrées dans la base de données."
                 } >> "$LOG_FILE"
     
-                # Préparer les données pour le tableau
-                local metrics=(
+            # Préparer les données pour le tableau
+            local metrics=(
                     "Mémoire totale:$(printf "%d MB" "$total_memory")"
                     "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
                     "Mémoire libre:$(printf "%d MB" "$free_memory")"
@@ -861,19 +861,19 @@ benchmark_memory() {
                 local results=$(cat "$temp_results_file")
                 rm "$temp_results_file"
                 
-                # Extraire les données du résultat de sysbench
-                local total_ops=$(echo "$results" | grep 'Total operations:' | grep -o '[0-9]\+' || echo "0")
-                local total_transferred=$(echo "$results" | grep 'Total transferred' | awk '{print $3}' || echo "0")
+                    # Extraire les données du résultat de sysbench
+                    local total_ops=$(echo "$results" | grep 'Total operations:' | grep -o '[0-9]\+' || echo "0")
+                    local total_transferred=$(echo "$results" | grep 'Total transferred' | awk '{print $3}' || echo "0")
                 local transfer_speed=$(echo "$results" | grep 'Transfer rate:' | awk '{print $3}' || echo "0")
                 
                 # Enregistrer les métriques directement dans la base de données
                 save_metric_to_db "memory_transfer_speed" "$transfer_speed"
-                
-                # Récupérer les infos mémoire du système
-                local mem_info=$(free -m)
-                local total_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $2}')
-                local used_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $3}')
-                local free_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $4}')
+                    
+                    # Récupérer les infos mémoire du système
+                    local mem_info=$(free -m)
+                    local total_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $2}')
+                    local used_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $3}')
+                    local free_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $4}')
                 
                 # Journaliser les valeurs
                 {
@@ -886,19 +886,19 @@ benchmark_memory() {
                     echo "Vitesse de transfert (MiB/sec): $transfer_speed"
                     echo "Valeurs enregistrées dans la base de données."
                 } >> "$LOG_FILE"
-                
-                # Préparer les données pour le tableau
-                local metrics=(
-                    "Mémoire totale:$(printf "%d MB" "$total_memory")"
-                    "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
-                    "Mémoire libre:$(printf "%d MB" "$free_memory")"
-                    "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
-                    "Opérations totales:$(printf "%s" "$total_ops")"
-                    "Données transférées:$(printf "%s MiB" "$total_transferred")"
+                    
+                    # Préparer les données pour le tableau
+                    local metrics=(
+                        "Mémoire totale:$(printf "%d MB" "$total_memory")"
+                        "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
+                        "Mémoire libre:$(printf "%d MB" "$free_memory")"
+                        "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
+                        "Opérations totales:$(printf "%s" "$total_ops")"
+                        "Données transférées:$(printf "%s MiB" "$total_transferred")"
                     "Vitesse de transfert:$(printf "%.2f MiB/sec" "$(format_number "$transfer_speed")")"
-                )
-                
-                format_table "Résultats Mémoire" "${metrics[@]}"
+            )
+            
+            format_table "Résultats Mémoire" "${metrics[@]}"
             fi
             ;;
     esac
@@ -1016,13 +1016,13 @@ benchmark_disk() {
     } >> "$LOG_FILE"
     
     # Préparer les données pour le tableau
-    local metrics=(
+            local metrics=(
         "Taille du test:$test_size_formatted"
         "Vitesse d'écriture:$write_speed_formatted"
         "Vitesse de lecture:$read_speed_formatted"
-    )
-    
-    format_table "Résultats Disque" "${metrics[@]}"
+            )
+            
+            format_table "Résultats Disque" "${metrics[@]}"
 }
 
 # Fonction pour le benchmark réseau
@@ -1251,7 +1251,7 @@ save_metric_to_db() {
     local metric_name="$1"
     local metric_value="$2"
     local db_file="$RESULTS_DIR/benchmark_results.db"
-    local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+    local timestamp=$(date +"%s")  # Utiliser un timestamp unix en secondes au lieu de la date formatée
     
     # Créer la table si elle n'existe pas
     if ! [ -f "$db_file" ]; then
@@ -1260,14 +1260,19 @@ save_metric_to_db() {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             metric TEXT,
             value REAL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            timestamp INTEGER
         );"
     fi
     
     # Enregistrer la métrique
     if [ -n "$metric_value" ] && [ "$metric_value" != "N/A" ]; then
-        sqlite3 "$db_file" "INSERT INTO benchmark_results (metric, value, timestamp) VALUES ('$metric_name', $metric_value, '$timestamp');"
+        # Vérifier que la valeur est bien numérique
+        if [[ "$metric_value" =~ ^[0-9.]+$ ]]; then
+            sqlite3 "$db_file" "INSERT INTO benchmark_results (metric, value, timestamp) VALUES ('$metric_name', $metric_value, $timestamp);"
         echo "Métrique $metric_name = $metric_value enregistrée" >> "$LOG_FILE"
+        else
+            echo "Avertissement: La valeur '$metric_value' pour la métrique '$metric_name' n'est pas numérique, non enregistrée" >> "$LOG_FILE"
+        fi
     fi
 }
 
@@ -1410,6 +1415,15 @@ generate_charts() {
     local disk_write=$(grep -A 20 "Résultats Disque" "$LOG_FILE" | grep -i "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "0")
     local disk_read=$(grep -A 20 "Résultats Disque" "$LOG_FILE" | grep -i "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "0")
     
+    # Si les valeurs sont zéro, essayer de les récupérer depuis les métriques brutes
+    if [ "$disk_write" = "0" ]; then
+        disk_write=$(grep -A 5 "DISQUE - MÉTRIQUES BRUTES" "$LOG_FILE" | grep -i "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    fi
+    
+    if [ "$disk_read" = "0" ]; then
+        disk_read=$(grep -A 5 "DISQUE - MÉTRIQUES BRUTES" "$LOG_FILE" | grep -i "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    fi
+    
     # Récupérer les données d'espace disque
     local disk_total=$(df -h / | tail -n 1 | awk '{print $2}' | sed 's/[^0-9.]//g')
     local disk_used=$(df -h / | tail -n 1 | awk '{print $3}' | sed 's/[^0-9.]//g')
@@ -1419,8 +1433,22 @@ generate_charts() {
     
     # Vérifier les données de réseau
     local network_download=$(grep -A 20 "Résultats Réseau" "$LOG_FILE" | grep -i "Débit descendant" | head -1 | grep -o "[0-9.]\+" || echo "0") 
+    if [ "$network_download" = "0" ]; then
+        network_download=$(grep -A 5 "RÉSEAU - MÉTRIQUES CLÉS" "$LOG_FILE" | grep -i "Débit descendant" | head -1 | grep -o "[0-9.]\+" || echo "0")
+        if [ "$network_download" = "0" ]; then
+            network_download=$(grep "RÉSEAU_INFO_MBPS:" "$LOG_FILE" | head -1 | cut -d':' -f2 | tr -d ' ' || echo "0")
+        fi
+    fi
+    
     local network_upload=$(grep -A 20 "Résultats Réseau" "$LOG_FILE" | grep -i "Débit montant" | head -1 | grep -o "[0-9.]\+" || echo "0")
-    local network_ping=$(grep -A 20 "Résultats Réseau" "$LOG_FILE" | grep -i "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "0")
+    if [ "$network_upload" = "0" ]; then
+        network_upload=$(grep -A 5 "RÉSEAU - MÉTRIQUES CLÉS" "$LOG_FILE" | grep -i "Débit montant" | head -1 | grep -o "[0-9.]\+" || echo "0")
+        if [ "$network_upload" = "0" ]; then
+            network_upload=$(grep "RÉSEAU_INFO_UPLOAD_MBPS:" "$LOG_FILE" | head -1 | cut -d':' -f2 | tr -d ' ' || echo "0")
+        fi
+    fi
+    
+    local network_ping=$(grep -A 20 "Résultats Réseau" "$LOG_FILE" | grep -i "Latence" | head -1 | grep -o "[0-9.]\+" || echo "0")
     
     # Logs de débogage pour voir les valeurs extraites
     {
@@ -2463,36 +2491,120 @@ show_enhanced_menu() {
 
 # Fonction pour afficher les informations système
 show_system_info() {
-    get_hardware_info
-    get_network_info
+    clear
+    echo
+    echo -e "${WHITE}${BOLD}══════════════════════════════════════════════════════════════════${NC}"
+    center_text "$LOGO_TEXT" "$CYAN"
+    echo
+    center_text "INFORMATIONS SYSTÈME" "$GREEN"
+    echo
+    
+    # Récupérer les informations système de base
+    local system_info=$(get_system_info)
+    local cpu_info=$(get_cpu_info_summary)
+    local ram_info=$(get_ram_info)
+    local storage_info=$(get_storage_info)
+    local network_info=$(get_network_info)
+    
+    # Affichage sous forme de tableau élégant
+    echo -e "${WHITE}${BOLD}┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓${NC}"
+    
+    echo -e "${WHITE}${BOLD}┃                    INFORMATIONS SYSTÈME                   ┃${NC}"
+    echo -e "${WHITE}${BOLD}┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫${NC}"
+    
+    # Afficher les informations système
+    IFS=$'\n'
+    for line in $system_info; do
+        IFS=':' read -r key value <<< "$line"
+        printf "${WHITE}${BOLD}┃${NC} ${BLUE}%-20s ${NC}│ ${GREEN}%-40s${NC} ${WHITE}${BOLD}┃${NC}\n" "$key" "$value"
+    done
+    
+    echo -e "${WHITE}${BOLD}┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫${NC}"
+    echo -e "${WHITE}${BOLD}┃                 INFORMATIONS PROCESSEUR                  ┃${NC}"
+    echo -e "${WHITE}${BOLD}┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫${NC}"
+    
+    # Afficher les informations CPU
+    for line in $cpu_info; do
+        IFS=':' read -r key value <<< "$line"
+        printf "${WHITE}${BOLD}┃${NC} ${YELLOW}%-20s ${NC}│ ${GREEN}%-40s${NC} ${WHITE}${BOLD}┃${NC}\n" "$key" "$value"
+    done
+    
+    echo -e "${WHITE}${BOLD}┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫${NC}"
+    echo -e "${WHITE}${BOLD}┃                 INFORMATIONS MÉMOIRE                     ┃${NC}"
+    echo -e "${WHITE}${BOLD}┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫${NC}"
+    
+    # Afficher les informations RAM
+    for line in $ram_info; do
+        IFS=':' read -r key value <<< "$line"
+        printf "${WHITE}${BOLD}┃${NC} ${MAGENTA}%-20s ${NC}│ ${GREEN}%-40s${NC} ${WHITE}${BOLD}┃${NC}\n" "$key" "$value"
+    done
+    
+    echo -e "${WHITE}${BOLD}┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫${NC}"
+    echo -e "${WHITE}${BOLD}┃                 INFORMATIONS STOCKAGE                    ┃${NC}"
+    echo -e "${WHITE}${BOLD}┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫${NC}"
+    
+    # Afficher les informations stockage
+    for line in $storage_info; do
+        IFS=':' read -r key value <<< "$line"
+        printf "${WHITE}${BOLD}┃${NC} ${CYAN}%-20s ${NC}│ ${GREEN}%-40s${NC} ${WHITE}${BOLD}┃${NC}\n" "$key" "$value"
+    done
+    
+    echo -e "${WHITE}${BOLD}┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫${NC}"
+    echo -e "${WHITE}${BOLD}┃                 INFORMATIONS RÉSEAU                      ┃${NC}"
+    echo -e "${WHITE}${BOLD}┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫${NC}"
+    
+    # Afficher les informations réseau
+    for line in $network_info; do
+        IFS=':' read -r key value <<< "$line"
+        printf "${WHITE}${BOLD}┃${NC} ${RED}%-20s ${NC}│ ${GREEN}%-40s${NC} ${WHITE}${BOLD}┃${NC}\n" "$key" "$value"
+    done
+    
+    # Ajouter une ligne visuelle fermant le tableau complètement
+    echo -e "${WHITE}${BOLD}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
+    
+    echo
+    echo -e "${YELLOW}Appuyez sur Entrée pour revenir au menu principal...${NC}"
+    read -r
 }
 
 # Fonction pour initialiser la base de données SQLite
 init_db() {
+    # Vérifier que sqlite3 est installé
     if ! command -v sqlite3 &> /dev/null; then
+        echo "Installation de SQLite..."
+        if [ "$PLATFORM" = "raspbian" ] || [ "$PLATFORM" = "ubuntu" ]; then
         apt-get install -y sqlite3
+        elif [ "$PLATFORM" = "macos" ]; then
+            brew install sqlite3
+        else
+            echo "Plateforme non supportée pour l'installation de SQLite"
+            return 1
+        fi
+    fi
+
+    local db_file="$RESULTS_DIR/benchmark_results.db"
+    
+    # Créer le répertoire s'il n'existe pas
+    mkdir -p "$RESULTS_DIR"
+    
+    # Vérifier si la base de données existe déjà
+    if [ ! -f "$db_file" ]; then
+        # Créer une nouvelle base de données
+        sqlite3 "$db_file" "CREATE TABLE benchmark_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+            metric TEXT,
+            value REAL,
+            timestamp INTEGER
+        );"
+        echo "Base de données créée: $db_file"
     fi
     
-    mkdir -p "$RESULTS_DIR"
-    sqlite3 "$HISTORY_DB" "CREATE TABLE IF NOT EXISTS benchmarks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT,
-        cpu_single_min REAL,
-        cpu_single_avg REAL,
-        cpu_single_max REAL,
-        cpu_multi_min REAL,
-        cpu_multi_avg REAL,
-        cpu_multi_max REAL,
-        memory_min REAL,
-        memory_avg REAL,
-        memory_max REAL,
-        disk_write REAL,
-        disk_read REAL,
-        network_download REAL,
-        network_upload REAL,
-        network_ping REAL,
-        temperature_max REAL
-    );"
+    # Nettoyer les anciennes entrées problématiques (avec des valeurs comme 20250426)
+    sqlite3 "$db_file" "DELETE FROM benchmark_results WHERE cast(value as text) LIKE '2025%';"
+    echo "Nettoyage des données problématiques terminé"
+    
+    # Traiter le dernier fichier de log pour extraire les métriques
+    process_last_log
 }
 
 # Fonction pour exporter les résultats en CSV
@@ -2648,7 +2760,11 @@ show_summary() {
         printf "${RED}%-20s ${NC}│ ${GREEN}%-40s${NC}\n" "$key" "$value"
     done
     
+    # Fermer le tableau avec une ligne de bordure inférieure
     echo -e "${WHITE}${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    
+    # Ajouter une ligne visuelle fermant le tableau complètement
+    echo -e "${WHITE}${BOLD}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}"
     echo
     center_text "Rapport complet sauvegardé dans: $RESULTS_DIR" "$YELLOW"
     echo
@@ -2822,11 +2938,28 @@ get_storage_info() {
         echo "Espace utilisé: $root_used ($root_percent)"
         echo "Espace libre: $root_free ($free_percent%)"
         echo "Type de disque: $disk_type"
-        if [ -n "$disk_read" ]; then
+        if [ -n "$disk_read" ] && [ "$disk_read" != "N/A" ]; then
             echo "Vitesse lecture: $disk_read MB/s"
+        else
+            # Si disk_read est N/A, essayer de le récupérer directement des résultats bruts
+            local direct_disk_read=$(grep -A 5 "DISQUE - MÉTRIQUES BRUTES" "$LOG_FILE" | grep -i "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "N/A")
+            if [ "$direct_disk_read" != "N/A" ]; then
+                echo "Vitesse lecture: $direct_disk_read MB/s"
+            else
+                echo "Vitesse lecture: N/A MB/s"
+            fi
         fi
-        if [ -n "$disk_write" ]; then
+        
+        if [ -n "$disk_write" ] && [ "$disk_write" != "N/A" ]; then
             echo "Vitesse écriture: $disk_write MB/s"
+        else
+            # Si disk_write est N/A, essayer de le récupérer directement des résultats bruts
+            local direct_disk_write=$(grep -A 5 "DISQUE - MÉTRIQUES BRUTES" "$LOG_FILE" | grep -i "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "N/A")
+            if [ "$direct_disk_write" != "N/A" ]; then
+                echo "Vitesse écriture: $direct_disk_write MB/s"
+            else
+                echo "Vitesse écriture: N/A MB/s"
+            fi
         fi
     } >> "$LOG_FILE"
 }
@@ -2859,11 +2992,25 @@ get_network_info() {
     fi
     
     if [ -n "$download_speed" ]; then
-        echo "Débit descendant:$download_speed Mbps"
+        # Calculer la vitesse en MB/s en conservant 2 décimales
+        local download_mbps=$(echo "scale=2; $download_speed / 8" | bc)
+        # Sauvegarder les deux valeurs séparément dans le log, mais n'afficher que la version formatée
+        {
+            echo "RÉSEAU_INFO_MB:$download_mbps"
+            echo "RÉSEAU_INFO_MBPS:$download_speed"
+        } >> "$LOG_FILE"
+        echo "Débit descendant:${download_mbps} MB/s (${download_speed} Mbps)"
     fi
     
     if [ -n "$upload_speed" ]; then
-        echo "Débit montant:$upload_speed Mbps"
+        # Calculer la vitesse en MB/s en conservant 2 décimales
+        local upload_mbps=$(echo "scale=2; $upload_speed / 8" | bc)
+        # Sauvegarder les deux valeurs séparément dans le log, mais n'afficher que la version formatée
+        {
+            echo "RÉSEAU_INFO_UPLOAD_MB:$upload_mbps"
+            echo "RÉSEAU_INFO_UPLOAD_MBPS:$upload_speed"
+        } >> "$LOG_FILE"
+        echo "Débit montant:${upload_mbps} MB/s (${upload_speed} Mbps)"
     fi
     
     if [ -n "$ping" ]; then
@@ -2874,19 +3021,121 @@ get_network_info() {
 # Fonction pour récupérer la dernière valeur de benchmark
 get_last_benchmark_value() {
     local metric_name="$1"
-    local db_file="$RESULTS_DIR/benchmark_results.db"
+    local latest_log=$(ls -t "$RESULTS_DIR"/*.log 2>/dev/null | head -1)
     
-    if [ ! -f "$db_file" ]; then
-        echo "N/A"
-        return
+    if [ -z "$latest_log" ]; then
+        # Si pas de fichier log, utiliser le fichier log courant
+        latest_log="$LOG_FILE"
     fi
     
-    local result=$(sqlite3 "$db_file" "SELECT value FROM benchmark_results WHERE metric='$metric_name' ORDER BY timestamp DESC LIMIT 1" 2>/dev/null)
+    # Afficher le log utilisé pour le débogage
+    echo "Utilisation du log le plus récent pour extraction: $latest_log" >> "$LOG_FILE"
     
-    if [ -n "$result" ] && [ "$result" != "20250426.0" ]; then
+    # Chercher la valeur directement dans les logs en fonction du type de métrique
+    local result=""
+    
+    case "$metric_name" in
+        "cpu_ops_per_sec")
+            result=$(grep -A 20 "Résultats CPU" "$latest_log" | grep -i "Opérations/sec" | head -1 | grep -o "[0-9.]\+" || echo "")
+            if [ -z "$result" ]; then
+                result=$(grep -A 5 "CPU - MÉTRIQUES BRUTES" "$latest_log" | grep -i "Opérations/sec" | head -1 | grep -o "[0-9.]\+" || echo "")
+            fi
+            ;;
+        "cpu_exec_time")
+            result=$(grep -A 20 "Résultats CPU" "$latest_log" | grep -i "Temps total" | head -1 | grep -o "[0-9.]\+" || echo "")
+            if [ -z "$result" ]; then
+                result=$(grep -A 5 "CPU - MÉTRIQUES BRUTES" "$latest_log" | grep -i "Temps total" | head -1 | grep -o "[0-9.]\+" || echo "")
+            fi
+            ;;
+        "cpu_multi_ops")
+            result=$(grep -A 20 "Résultats Threads" "$latest_log" | grep -i "Opérations totales" | head -1 | grep -o "[0-9.]\+" || echo "")
+            if [ -z "$result" ]; then
+                result=$(grep -A 5 "THREADS - MÉTRIQUES BRUTES" "$latest_log" | grep -i "Opérations totales" | head -1 | grep -o "[0-9.]\+" || echo "")
+            fi
+            ;;
+        "cpu_multi_latency")
+            result=$(grep -A 20 "Résultats Threads" "$latest_log" | grep -i "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "")
+            if [ -z "$result" ]; then
+                result=$(grep -A 5 "THREADS - MÉTRIQUES BRUTES" "$latest_log" | grep -i "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "")
+            fi
+            ;;
+        "memory_transfer_speed")
+            result=$(grep -A 20 "Résultats Mémoire" "$latest_log" | grep -i "Vitesse de transfert" | head -1 | grep -o "[0-9.]\+" || echo "")
+            if [ -z "$result" ]; then
+                result=$(grep -A 5 "MÉMOIRE - MÉTRIQUES BRUTES" "$latest_log" | grep -i "Vitesse de transfert" | head -1 | grep -o "[0-9.]\+" || echo "")
+                if [ -z "$result" ]; then
+                    # Recherche alternative pour la vitesse mémoire
+                    result=$(grep -A 20 "Résultats Mémoire" "$latest_log" | grep -i "Données transférées" | head -1 | grep -o "[0-9.]\+" || echo "")
+                fi
+            fi
+            ;;
+        "disk_read")
+            result=$(grep -A 20 "Résultats Disque" "$latest_log" | grep -i "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "")
+            if [ -z "$result" ]; then
+                result=$(grep -A 5 "DISQUE - MÉTRIQUES BRUTES" "$latest_log" | grep -i "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "")
+                if [ -z "$result" ]; then
+                    # Recherche plus large dans tout le fichier
+                    result=$(grep "Vitesse lecture:" "$latest_log" | grep -v "N/A" | head -1 | grep -o "[0-9.]\+" || echo "")
+                fi
+            fi
+            ;;
+        "disk_write")
+            result=$(grep -A 20 "Résultats Disque" "$latest_log" | grep -i "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "")
+            if [ -z "$result" ]; then
+                result=$(grep -A 5 "DISQUE - MÉTRIQUES BRUTES" "$latest_log" | grep -i "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "")
+                if [ -z "$result" ]; then
+                    # Recherche plus large dans tout le fichier
+                    result=$(grep "Vitesse écriture:" "$latest_log" | grep -v "N/A" | head -1 | grep -o "[0-9.]\+" || echo "")
+                fi
+            fi
+            ;;
+        "network_download")
+            result=$(grep -A 20 "Résultats Réseau" "$latest_log" | grep -i "Téléchargement" | head -1 | grep -o "[0-9.]\+" || echo "")
+            if [ -z "$result" ]; then
+                result=$(grep -A 5 "RÉSEAU - MÉTRIQUES CLÉS" "$latest_log" | grep -i "Débit descendant" | head -1 | grep -o "[0-9.]\+" || echo "")
+                if [ -z "$result" ]; then
+                    result=$(grep "RÉSEAU_INFO_MBPS:" "$latest_log" | head -1 | cut -d':' -f2 | tr -d ' ' || echo "")
+                fi
+            fi
+            ;;
+        "network_upload")
+            result=$(grep -A 20 "Résultats Réseau" "$latest_log" | grep -i "Upload" | head -1 | grep -o "[0-9.]\+" || echo "")
+            if [ -z "$result" ]; then
+                result=$(grep -A 5 "RÉSEAU - MÉTRIQUES CLÉS" "$latest_log" | grep -i "Débit montant" | head -1 | grep -o "[0-9.]\+" || echo "")
+                if [ -z "$result" ]; then
+                    result=$(grep "RÉSEAU_INFO_UPLOAD_MBPS:" "$latest_log" | head -1 | cut -d':' -f2 | tr -d ' ' || echo "")
+                fi
+            fi
+            ;;
+        "network_ping")
+            result=$(grep -A 20 "Résultats Réseau" "$latest_log" | grep -i "Latence" | head -1 | grep -o "[0-9.]\+" || echo "")
+            if [ -z "$result" ]; then
+                result=$(grep -A 5 "RÉSEAU - MÉTRIQUES CLÉS" "$latest_log" | grep -i "Latence" | head -1 | grep -o "[0-9.]\+" || echo "")
+            fi
+            ;;
+    esac
+    
+    # Enregistrer les valeurs extraites pour débogage
+    echo "Valeurs extraites pour la base de données:" >> "$LOG_FILE"
+    case "$metric_name" in
+        "cpu_ops_per_sec") echo "CPU ops: $result" >> "$LOG_FILE" ;;
+        "cpu_exec_time") echo "CPU time: $result" >> "$LOG_FILE" ;;
+        "cpu_events") echo "CPU events: $result" >> "$LOG_FILE" ;;
+        "cpu_multi_ops") echo "Threads ops: $result" >> "$LOG_FILE" ;;
+        "cpu_multi_latency") echo "Threads latency: $result" >> "$LOG_FILE" ;;
+        "cpu_multi_time") echo "Threads time: $result" >> "$LOG_FILE" ;;
+        "memory_transfer_speed") echo "Memory speed: $result" >> "$LOG_FILE" ;;
+        "disk_write") echo "Disk write: $result" >> "$LOG_FILE" ;;
+        "disk_read") echo "Disk read: $result" >> "$LOG_FILE" ;;
+        "network_download") echo "Network download: $result" >> "$LOG_FILE" ;;
+        "network_upload") echo "Network upload: $result" >> "$LOG_FILE" ;;
+        "network_ping") echo "Network ping: $result" >> "$LOG_FILE" ;;
+    esac
+    
+    if [ -n "$result" ] && [ "$result" != "20250426.0" ] && [ "$result" != "123311.0" ]; then
         echo "$result"
     else
-        # Si aucun résultat ou valeur aberrante, renvoyer N/A
+        # Si toujours aucun résultat valide après toutes les tentatives, renvoyer N/A
         echo "N/A"
     fi
 }
@@ -2989,6 +3238,106 @@ center_text() {
     echo -e "${color}${text}${NC}"
 }
 
+# Fonction pour traiter le dernier fichier de log et extraire les métriques importantes
+process_last_log() {
+    local latest_log=$(ls -t "$RESULTS_DIR"/*.log 2>/dev/null | head -1)
+    
+    if [ -z "$latest_log" ]; then
+        return  # Pas de fichier log trouvé
+    fi
+    
+    # Afficher le message de débogage
+    echo "Débogage: Recherche du fichier journal dans $RESULTS_DIR" >> "$LOG_FILE"
+    echo "Débogage: Fichier journal trouvé: $latest_log" >> "$LOG_FILE"
+    
+    # Extraire les métriques CPU
+    local cpu_ops=$(grep -A 20 "Résultats CPU" "$latest_log" | grep -i "Opérations/sec" | head -1 | grep -o "[0-9.]\+" || echo "")
+    if [ -n "$cpu_ops" ]; then
+        save_metric_to_db "cpu_ops_per_sec" "$cpu_ops"
+    fi
+    
+    local cpu_time=$(grep -A 20 "Résultats CPU" "$latest_log" | grep -i "Temps total" | head -1 | grep -o "[0-9.]\+" || echo "")
+    if [ -n "$cpu_time" ]; then
+        cpu_time=${cpu_time%.*}  # Enlève la partie décimale
+        save_metric_to_db "cpu_exec_time" "$cpu_time"
+    fi
+    
+    local cpu_events=$(grep -A 20 "Résultats CPU" "$latest_log" | grep -i "Événements" | head -1 | grep -o "[0-9.]\+" || echo "")
+    if [ -n "$cpu_events" ]; then
+        save_metric_to_db "cpu_events" "$cpu_events"
+    fi
+    
+    # Extraire les métriques de threads
+    local cpu_multi_ops=$(grep -A 20 "Résultats Threads" "$latest_log" | grep -i "Opérations totales" | head -1 | grep -o "[0-9.]\+" || echo "")
+    if [ -n "$cpu_multi_ops" ]; then
+        save_metric_to_db "cpu_multi_ops" "$cpu_multi_ops"
+    fi
+    
+    local cpu_multi_latency=$(grep -A 20 "Résultats Threads" "$latest_log" | grep -i "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "")
+    if [ -n "$cpu_multi_latency" ]; then
+        save_metric_to_db "cpu_multi_latency" "$cpu_multi_latency"
+    fi
+    
+    # Extraire les métriques de disque
+    local disk_read=$(grep -A 20 "Résultats Disque" "$latest_log" | grep -i "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "")
+    if [ -z "$disk_read" ]; then
+        disk_read=$(grep -A 5 "DISQUE - MÉTRIQUES BRUTES" "$latest_log" | grep -i "Vitesse de lecture" | head -1 | grep -o "[0-9.]\+" || echo "")
+    fi
+    if [ -n "$disk_read" ]; then
+        save_metric_to_db "disk_read" "$disk_read"
+    fi
+    
+    local disk_write=$(grep -A 20 "Résultats Disque" "$latest_log" | grep -i "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "")
+    if [ -z "$disk_write" ]; then
+        disk_write=$(grep -A 5 "DISQUE - MÉTRIQUES BRUTES" "$latest_log" | grep -i "Vitesse d'écriture" | head -1 | grep -o "[0-9.]\+" || echo "")
+    fi
+    if [ -n "$disk_write" ]; then
+        save_metric_to_db "disk_write" "$disk_write"
+    fi
+    
+    # Extraire les métriques réseau
+    local network_download=""
+    # Essayer d'abord de récupérer depuis les informations spécifiques
+    if [ -z "$network_download" ]; then
+        network_download=$(grep "RÉSEAU_INFO_MBPS:" "$latest_log" | head -1 | cut -d':' -f2 | tr -d ' ' || echo "")
+    fi
+    # Sinon, chercher dans les métriques clés
+    if [ -z "$network_download" ]; then
+        network_download=$(grep -A 5 "RÉSEAU - MÉTRIQUES CLÉS" "$latest_log" | grep -i "Débit descendant" | head -1 | grep -o "[0-9.]\+" || echo "")
+    fi
+    # En dernier recours, chercher dans les résultats réseau
+    if [ -z "$network_download" ]; then
+        network_download=$(grep -A 20 "Résultats Réseau" "$latest_log" | grep -i "Téléchargement" | head -1 | grep -o "([0-9.]\+ Mbps)" | grep -o "[0-9.]\+" || echo "")
+    fi
+    
+    if [ -n "$network_download" ]; then
+        save_metric_to_db "network_download" "$network_download"
+    fi
+    
+    local network_upload=""
+    # Essayer d'abord de récupérer depuis les informations spécifiques
+    if [ -z "$network_upload" ]; then
+        network_upload=$(grep "RÉSEAU_INFO_UPLOAD_MBPS:" "$latest_log" | head -1 | cut -d':' -f2 | tr -d ' ' || echo "")
+    fi
+    # Sinon, chercher dans les métriques clés
+    if [ -z "$network_upload" ]; then
+        network_upload=$(grep -A 5 "RÉSEAU - MÉTRIQUES CLÉS" "$latest_log" | grep -i "Débit montant" | head -1 | grep -o "[0-9.]\+" || echo "")
+    fi
+    # En dernier recours, chercher dans les résultats réseau
+    if [ -z "$network_upload" ]; then
+        network_upload=$(grep -A 20 "Résultats Réseau" "$latest_log" | grep -i "Upload" | head -1 | grep -o "([0-9.]\+ Mbps)" | grep -o "[0-9.]\+" || echo "")
+    fi
+    
+    if [ -n "$network_upload" ]; then
+        save_metric_to_db "network_upload" "$network_upload"
+    fi
+    
+    local network_ping=$(grep -A 20 "Résultats Réseau" "$latest_log" | grep -i "Latence" | head -1 | grep -o "[0-9.]\+" || echo "")
+    if [ -n "$network_ping" ]; then
+        save_metric_to_db "network_ping" "$network_ping"
+    fi
+}
+
 # Exécution du script
-main "$@"
+main "$@" 
 
