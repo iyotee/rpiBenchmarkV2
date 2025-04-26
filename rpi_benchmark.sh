@@ -164,11 +164,11 @@ modern_header() {
 show_header() {
     clear
     echo ""
-    echo -e "${BLUE}${BOLD}╔═════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}${BOLD}║                                                                 ║${NC}"
-    echo -e "${BLUE}${BOLD}║  ${WHITE}${BOLD}  RPi BENCHMARK v2.0 - ANALYSE COMPLÈTE DES PERFORMANCES       ${NC}${BLUE}${BOLD}║${NC}"
-    echo -e "${BLUE}${BOLD}║                                                                 ║${NC}"
-    echo -e "${BLUE}${BOLD}╚═════════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${BLUE}${BOLD}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}${BOLD}║                                                                ║${NC}"
+    echo -e "${BLUE}${BOLD}║  ${WHITE}${BOLD}  RPi BENCHMARK v2.0 - ANALYSE COMPLÈTE DES PERFORMANCES      ${NC}${BLUE}${BOLD}║${NC}"
+    echo -e "${BLUE}${BOLD}║                                                                ║${NC}"
+    echo -e "${BLUE}${BOLD}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "  ${YELLOW}${SYMBOL_CLOCK} ${WHITE}Date:${NC} $(date '+%d %B %Y - %H:%M:%S')"
     echo -e "  ${YELLOW}${SYMBOL_INFO} ${WHITE}Journal:${NC} $LOG_FILE"
