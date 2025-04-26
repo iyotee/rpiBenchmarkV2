@@ -199,6 +199,22 @@ log_result() {
     }
 }
 
+strip_colors() {
+    echo -e "$1" | sed -r 's/\x1B\[[0-9;]*[mK]//g'
+}
+
+pad_string() {
+    local string="$1"
+    local width="$2"
+    local stripped=$(strip_colors "$string")
+    local real_length=${#stripped}
+    local padding=$((width - real_length))
+    printf "%s" "$string"
+    for ((i=0; i<padding; i++)); do
+        printf " "
+    done
+}
+
 format_table() {
     local title=$1
     shift
@@ -206,7 +222,7 @@ format_table() {
 
     local name_width=35
     local value_width=40
-    local total_width=$((name_width + value_width + 5))  # 5 car 3 séparateurs │ + 2 espaces
+    local total_width=$((name_width + value_width + 7)) # 7 car 3 "│" + 4 espaces
 
     # Bordures modernes
     local top_left="╭" top_right="╮" bottom_left="╰" bottom_right="╯" horizontal="─"
@@ -242,11 +258,11 @@ format_table() {
     echo -e "${top_right}${NC}"
 
     # En-tête
-    echo -ne "${line_color}${vertical}${NC}${header_bg}${header_fg}${BOLD}"
-    printf " %- ${name_width}s " "MÉTRIQUE"
-    echo -ne "${line_color}${vertical}${NC}${header_bg}${header_fg}${BOLD}"
-    printf " %- ${value_width}s " "VALEUR"
-    echo -e "${NC}${line_color}${vertical}${NC}"
+    echo -ne "${line_color}${vertical}${NC} "
+    pad_string "${header_bg}${header_fg}${BOLD}MÉTRIQUE${NC}" $name_width
+    echo -ne " ${line_color}${vertical}${NC} "
+    pad_string "${header_bg}${header_fg}${BOLD}VALEUR${NC}" $value_width
+    echo -e " ${line_color}${vertical}${NC}"
 
     # Ligne de séparation
     echo -ne "${line_color}${left_t}"
@@ -262,18 +278,14 @@ format_table() {
         local value=$(echo "$metric" | cut -d':' -f2-)
         value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
-        # Alternance de couleurs (facultatif)
-        if [ $((i % 2)) -eq 0 ]; then
-            row_bg=""
-        else
-            row_bg=""
-        fi
+        local name_colored="${text_color}${name}${NC}"
+        local value_colored="${value_color}${value}${NC}"
 
-        echo -ne "${line_color}${vertical}${NC}${row_bg}${text_color}"
-        printf " %- ${name_width}s " "$name"
-        echo -ne "${line_color}${vertical}${NC}${row_bg}${value_color}"
-        printf " %- ${value_width}s " "$value"
-        echo -e "${NC}${line_color}${vertical}${NC}"
+        echo -ne "${line_color}${vertical}${NC} "
+        pad_string "$name_colored" $name_width
+        echo -ne " ${line_color}${vertical}${NC} "
+        pad_string "$value_colored" $value_width
+        echo -e " ${line_color}${vertical}${NC}"
 
         i=$((i + 1))
     done
@@ -283,6 +295,7 @@ format_table() {
     printf "%s" "$(printf "%${total_width}s" | tr ' ' "$horizontal")"
     echo -e "${bottom_right}${NC}"
 }
+
 
 
 # Fonction pour obtenir la température CPU avec style moderne
