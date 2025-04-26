@@ -808,7 +808,7 @@ benchmark_memory() {
                 local total_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $2}')
                 local used_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $3}')
                 local free_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $4}')
-                
+    
                 # Journaliser les valeurs
                 {
                     echo "MÉMOIRE - MÉTRIQUES BRUTES (Linux/dd):"
@@ -821,7 +821,7 @@ benchmark_memory() {
     
                 # Préparer les données pour le tableau avec un formatage amélioré
                 local usage_percent=$(echo "scale=1; $used_memory*100/$total_memory" | bc)
-                local metrics=(
+            local metrics=(
                     "Mémoire totale:$(printf "%d MB" "$total_memory")"
                     "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
                     "Mémoire libre:$(printf "%d MB" "$free_memory")"
@@ -942,12 +942,12 @@ benchmark_memory() {
                 
                 # Enregistrer les métriques directement dans la base de données
                 save_metric_to_db "memory_transfer_speed" "$transfer_speed"
-                
-                # Récupérer les infos mémoire du système
-                local mem_info=$(free -m)
-                local total_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $2}')
-                local used_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $3}')
-                local free_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $4}')
+                    
+                    # Récupérer les infos mémoire du système
+                    local mem_info=$(free -m)
+                    local total_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $2}')
+                    local used_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $3}')
+                    local free_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $4}')
                 
                 # Journaliser les valeurs
                 {
@@ -964,19 +964,19 @@ benchmark_memory() {
                 # Formater la vitesse de transfert et les données transférées avec notre fonction sécurisée
                 local formatted_speed=$(format_number "$transfer_speed")
                 local formatted_transferred=$(format_number "$total_transferred")
-                
-                # Préparer les données pour le tableau
-                local metrics=(
-                    "Mémoire totale:$(printf "%d MB" "$total_memory")"
-                    "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
-                    "Mémoire libre:$(printf "%d MB" "$free_memory")"
-                    "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
+                    
+                    # Préparer les données pour le tableau
+                    local metrics=(
+                        "Mémoire totale:$(printf "%d MB" "$total_memory")"
+                        "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
+                        "Mémoire libre:$(printf "%d MB" "$free_memory")"
+                        "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
                     "Opérations totales:$(printf "%d" "$total_ops")"
                     "Données transférées:$(printf "%.2f MB" "$formatted_transferred")"
                     "Vitesse de transfert:$(printf "%.2f MB/s" "$formatted_speed")"
-                )
-                
-                format_table "Résultats Mémoire" "${metrics[@]}"
+            )
+            
+            format_table "Résultats Mémoire" "${metrics[@]}"
             fi
             ;;
     esac
@@ -1159,9 +1159,9 @@ benchmark_network() {
         if [[ ${#ping_values[@]} -gt 0 ]]; then
             ping_value=$(echo "scale=2; $ping_sum / ${#ping_values[@]}" | bc)
             echo -e "${GREEN}${SYMBOL_CHECK} Latence moyenne: ${WHITE}${ping_value}${NC} ms"
-            
+        
             # Calculer jitter
-            if [[ $jitter_count -gt 0 ]]; then
+        if [[ $jitter_count -gt 0 ]]; then
                 jitter=$(echo "scale=2; $jitter_sum / $jitter_count" | bc)
                 echo -e "${GREEN}${SYMBOL_CHECK} Jitter: ${WHITE}${jitter}${NC} ms"
             fi
@@ -1219,130 +1219,130 @@ benchmark_network() {
                 
                 # Utiliser la méthode de test réseau alternative ici (l'ancienne méthode)
                 echo -e "${YELLOW}${BOLD}→ Test de téléchargement alternatif en cours...${NC}"
-                show_progress 0
-                
+        show_progress 0
+        
                 # Utiliser plusieurs serveurs pour les tests
-                local dl_servers=(
-                    "https://speed.cloudflare.com/__down?bytes=10000000"
+        local dl_servers=(
+            "https://speed.cloudflare.com/__down?bytes=10000000"
                     "https://speedtest.net/test-server.php?size=10"
                     "https://download.thinkbroadband.com/10MB.zip"
-                )
+        )
                 
                 local dl_speeds=()
-                
-                for ((i=0; i<${#dl_servers[@]}; i++)); do
-                    local url="${dl_servers[$i]}"
-                    local start_time=$(date +%s.%N)
-                    curl -s -o /dev/null "$url" &
-                    local curl_pid=$!
-                    
-                    # Afficher progression
-                    local server_progress=0
-                    while kill -0 $curl_pid 2>/dev/null; do
-                        server_progress=$((server_progress + 5))
-                        [ $server_progress -gt 95 ] && server_progress=95
-                        local total_progress=$(( (i * 100 + server_progress) / ${#dl_servers[@]} ))
-                        show_progress $total_progress
-                        sleep 0.1
-                    done
-                    
-                    wait $curl_pid
-                    local end_time=$(date +%s.%N)
-                    local time_diff=$(echo "$end_time - $start_time" | bc)
-                    
-                    # Taille en Mo divisée par temps en secondes = Mo/s
-                    local size_mb=10 # Taille approximative en Mo
-                    if [[ "$time_diff" != "0" && "$time_diff" != "0.00" ]]; then
-                        local speed=$(echo "scale=2; $size_mb / $time_diff" | bc)
-                        if [[ -n "$speed" && "$speed" != "0" ]]; then
-                            dl_speeds+=("$speed")
-                        fi
-                    fi
-                done
-                
-                show_progress 100
-                
-                # Calculer la moyenne des vitesses de téléchargement
-                if [[ ${#dl_speeds[@]} -gt 0 ]]; then
-                    local dl_sum=0
-                    for speed in "${dl_speeds[@]}"; do
-                        dl_sum=$(echo "$dl_sum + $speed" | bc)
-                    done
-                    download_speed=$(echo "scale=2; $dl_sum / ${#dl_speeds[@]}" | bc)
+        
+        for ((i=0; i<${#dl_servers[@]}; i++)); do
+            local url="${dl_servers[$i]}"
+            local start_time=$(date +%s.%N)
+            curl -s -o /dev/null "$url" &
+            local curl_pid=$!
+            
+            # Afficher progression
+            local server_progress=0
+            while kill -0 $curl_pid 2>/dev/null; do
+                server_progress=$((server_progress + 5))
+                [ $server_progress -gt 95 ] && server_progress=95
+                local total_progress=$(( (i * 100 + server_progress) / ${#dl_servers[@]} ))
+                show_progress $total_progress
+                sleep 0.1
+            done
+            
+            wait $curl_pid
+            local end_time=$(date +%s.%N)
+            local time_diff=$(echo "$end_time - $start_time" | bc)
+            
+            # Taille en Mo divisée par temps en secondes = Mo/s
+            local size_mb=10 # Taille approximative en Mo
+            if [[ "$time_diff" != "0" && "$time_diff" != "0.00" ]]; then
+                local speed=$(echo "scale=2; $size_mb / $time_diff" | bc)
+                if [[ -n "$speed" && "$speed" != "0" ]]; then
+                    dl_speeds+=("$speed")
                 fi
-                
-                # Convertir MB/s en Mbps pour l'affichage dans le tableau et enregistrement
+            fi
+        done
+        
+        show_progress 100
+        
+        # Calculer la moyenne des vitesses de téléchargement
+        if [[ ${#dl_speeds[@]} -gt 0 ]]; then
+            local dl_sum=0
+            for speed in "${dl_speeds[@]}"; do
+                dl_sum=$(echo "$dl_sum + $speed" | bc)
+            done
+            download_speed=$(echo "scale=2; $dl_sum / ${#dl_speeds[@]}" | bc)
+        fi
+        
+        # Convertir MB/s en Mbps pour l'affichage dans le tableau et enregistrement
                 download_mbps=$(echo "scale=2; $download_speed * 8" | bc)
-                
-                echo -e "\n${GREEN}${SYMBOL_CHECK} Vitesse de téléchargement: ${WHITE}${download_speed}${NC} MB/s (${WHITE}${download_mbps}${NC} Mbps)"
-                
-                # Test d'upload (simulé - difficile à mesurer précisément sans serveur dédié)
+        
+        echo -e "\n${GREEN}${SYMBOL_CHECK} Vitesse de téléchargement: ${WHITE}${download_speed}${NC} MB/s (${WHITE}${download_mbps}${NC} Mbps)"
+        
+        # Test d'upload (simulé - difficile à mesurer précisément sans serveur dédié)
                 echo -e "${YELLOW}${BOLD}→ Test d'upload alternatif en cours...${NC}"
-                show_progress 0
-                
-                # Créer un fichier temporaire pour l'upload
-                local temp_file=$(mktemp)
-                dd if=/dev/urandom of="$temp_file" bs=1M count=5 status=none
-                
-                # Upload vers des sites qui acceptent des POST
-                local ul_speeds=()
-                local ul_servers=(
-                    "https://httpbin.org/post"
-                    "https://postman-echo.com/post"
-                )
-                
-                for ((i=0; i<${#ul_servers[@]}; i++)); do
-                    local url="${ul_servers[$i]}"
-                    local start_time=$(date +%s.%N)
-                    curl -s -o /dev/null -F "file=@$temp_file" "$url" &
-                    local curl_pid=$!
-                    
-                    # Afficher progression
-                    local server_progress=0
-                    while kill -0 $curl_pid 2>/dev/null; do
-                        server_progress=$((server_progress + 5))
-                        [ $server_progress -gt 95 ] && server_progress=95
-                        local total_progress=$(( (i * 100 + server_progress) / ${#ul_servers[@]} ))
-                        show_progress $total_progress
-                        sleep 0.1
-                    done
-                    
-                    wait $curl_pid
-                    local end_time=$(date +%s.%N)
-                    local time_diff=$(echo "$end_time - $start_time" | bc)
-                    
-                    # Taille en Mo divisée par temps en secondes = Mo/s
+        show_progress 0
+        
+        # Créer un fichier temporaire pour l'upload
+        local temp_file=$(mktemp)
+        dd if=/dev/urandom of="$temp_file" bs=1M count=5 status=none
+        
+        # Upload vers des sites qui acceptent des POST
+        local ul_speeds=()
+        local ul_servers=(
+            "https://httpbin.org/post"
+            "https://postman-echo.com/post"
+        )
+        
+        for ((i=0; i<${#ul_servers[@]}; i++)); do
+            local url="${ul_servers[$i]}"
+            local start_time=$(date +%s.%N)
+            curl -s -o /dev/null -F "file=@$temp_file" "$url" &
+            local curl_pid=$!
+            
+            # Afficher progression
+            local server_progress=0
+            while kill -0 $curl_pid 2>/dev/null; do
+                server_progress=$((server_progress + 5))
+                [ $server_progress -gt 95 ] && server_progress=95
+                local total_progress=$(( (i * 100 + server_progress) / ${#ul_servers[@]} ))
+                show_progress $total_progress
+                sleep 0.1
+            done
+            
+            wait $curl_pid
+            local end_time=$(date +%s.%N)
+            local time_diff=$(echo "$end_time - $start_time" | bc)
+            
+            # Taille en Mo divisée par temps en secondes = Mo/s
                     local size_mb=5 # Taille approximative en Mo
-                    if [[ "$time_diff" != "0" && "$time_diff" != "0.00" ]]; then
-                        local speed=$(echo "scale=2; $size_mb / $time_diff" | bc)
-                        if [[ -n "$speed" && "$speed" != "0" ]]; then
-                            ul_speeds+=("$speed")
-                        fi
-                    fi
-                done
-                
-                # Nettoyer le fichier temporaire
-                rm -f "$temp_file"
-                
-                show_progress 100
-                
-                # Calculer la moyenne des vitesses d'upload
-                if [[ ${#ul_speeds[@]} -gt 0 ]]; then
-                    local ul_sum=0
-                    for speed in "${ul_speeds[@]}"; do
-                        ul_sum=$(echo "$ul_sum + $speed" | bc)
-                    done
-                    upload_speed=$(echo "scale=2; $ul_sum / ${#ul_speeds[@]}" | bc)
+            if [[ "$time_diff" != "0" && "$time_diff" != "0.00" ]]; then
+                local speed=$(echo "scale=2; $size_mb / $time_diff" | bc)
+                if [[ -n "$speed" && "$speed" != "0" ]]; then
+                    ul_speeds+=("$speed")
                 fi
-                
-                # Convertir MB/s en Mbps pour l'affichage dans le tableau et enregistrement
+            fi
+        done
+        
+        # Nettoyer le fichier temporaire
+        rm -f "$temp_file"
+        
+        show_progress 100
+        
+        # Calculer la moyenne des vitesses d'upload
+        if [[ ${#ul_speeds[@]} -gt 0 ]]; then
+            local ul_sum=0
+            for speed in "${ul_speeds[@]}"; do
+                ul_sum=$(echo "$ul_sum + $speed" | bc)
+            done
+            upload_speed=$(echo "scale=2; $ul_sum / ${#ul_speeds[@]}" | bc)
+        fi
+        
+        # Convertir MB/s en Mbps pour l'affichage dans le tableau et enregistrement
                 upload_mbps=$(echo "scale=2; $upload_speed * 8" | bc)
-                
-                echo -e "\n${GREEN}${SYMBOL_CHECK} Vitesse d'upload: ${WHITE}${upload_speed}${NC} MB/s (${WHITE}${upload_mbps}${NC} Mbps)"
+        
+        echo -e "\n${GREEN}${SYMBOL_CHECK} Vitesse d'upload: ${WHITE}${upload_speed}${NC} MB/s (${WHITE}${upload_mbps}${NC} Mbps)"
             fi
         else
             echo -e "${RED}${SYMBOL_CROSS} Impossible d'installer speedtest-cli, utilisation de la méthode alternative...${NC}"
-            
+        
             # Utiliser la méthode de test réseau alternative ici (même code que ci-dessus)
             # (Code pour la méthode alternative...)
             # Cette partie est identique à celle ci-dessus, donc j'évite de la répéter
