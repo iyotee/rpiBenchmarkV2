@@ -378,44 +378,80 @@ get_hardware_info() {
 }
 
 # Fonction pour installer les paquets requis
-install_packages() {
-    local packages=()
+install_dependencies() {
+    echo -e "${YELLOW}${BOLD}Vérification et installation des dépendances...${NC}"
     
-    # Définir les paquets en fonction de la plateforme
-    case $PLATFORM in
+    # Définir les paquets communs et spécifiques à la plateforme
+    local common_packages=("sysbench" "bc" "sqlite3" "python3")
+    local platform_packages=()
+    
+    # Détection de la plateforme
+    case "$PLATFORM" in
         "macos")
-            packages=("sysbench" "stress-ng" "speedtest-cli" "bc" "python3" "sqlite3")
+            echo -e "${CYAN}Système macOS détecté.${NC}"
+            platform_packages=("stress-ng" "speedtest-cli")
+            
             # Vérifier si osx-cpu-temp est nécessaire pour la température sous macOS
             if ! command -v osx-cpu-temp &> /dev/null; then
-                packages+=("osx-cpu-temp")
+                platform_packages+=("osx-cpu-temp")
+            fi
+            
+            # Vérifier si Homebrew est installé
+            if ! command -v brew &> /dev/null; then
+                echo -e "${YELLOW}Installation de Homebrew...${NC}"
+                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            else
+                echo -e "${GREEN}Homebrew est déjà installé.${NC}"
+            fi
+            
+            # Vérifier iperf3 pour les tests réseau
+            if ! command -v iperf3 &> /dev/null; then
+                platform_packages+=("iperf3")
             fi
             ;;
         "raspbian"|"ubuntu")
-            packages=("sysbench" "stress-ng" "speedtest-cli" "bc" "dnsutils" "hdparm" "python3" "python3-pip" "sqlite3" "dialog")
+            echo -e "${CYAN}Système basé sur Debian/Ubuntu détecté.${NC}"
+            platform_packages=("stress-ng" "speedtest-cli" "dnsutils" "hdparm" "python3-pip" "dialog")
+            
+            # Vérifier iperf3 pour les tests réseau
+            if ! command -v iperf3 &> /dev/null; then
+                platform_packages+=("iperf3")
+            fi
             ;;
         *)
-            # Même sur plateforme inconnue, tentons d'installer les paquets standard Linux
-            echo -e "${YELLOW}Plateforme non reconnue. Tentative d'installation des paquets Linux par défaut...${NC}"
-            packages=("sysbench" "stress-ng" "speedtest-cli" "bc" "dnsutils" "hdparm" "python3" "python3-pip" "sqlite3" "dialog")
+            # Si la plateforme est inconnue, tentons d'identifier par le gestionnaire de paquets
+            if command -v apt-get &> /dev/null; then
+                echo -e "${CYAN}Système basé sur Debian/Ubuntu détecté.${NC}"
+                platform_packages=("stress-ng" "speedtest-cli" "dnsutils" "hdparm" "python3-pip" "dialog" "iperf3")
+            elif command -v yum &> /dev/null; then
+                echo -e "${CYAN}Système basé sur Red Hat/CentOS/Fedora détecté.${NC}"
+                platform_packages=("stress-ng" "dnsutils" "hdparm" "python3-pip" "dialog" "iperf3")
+                
+                # Sur les systèmes RHEL, sysbench peut nécessiter epel-release
+                if ! command -v sysbench &> /dev/null; then
+                    echo -e "${YELLOW}Installation de epel-release pour sysbench...${NC}"
+                    sudo yum install -y epel-release
+                fi
+            else
+                echo -e "${YELLOW}Plateforme non reconnue. Tentative d'installation des paquets Linux par défaut...${NC}"
+                platform_packages=("stress-ng" "speedtest-cli" "dnsutils" "hdparm" "python3-pip" "dialog" "iperf3")
+            fi
             ;;
     esac
-
+    
+    # Combiner les paquets communs et spécifiques à la plateforme
+    local all_packages=("${common_packages[@]}" "${platform_packages[@]}")
     local missing_deps=()
-
-    # Vérifier si nous sommes sur macOS et si Homebrew est installé
-    if [[ "$PLATFORM" == "macos" ]] && ! command -v brew &> /dev/null; then
-        display_error "Homebrew n'est pas installé. Veuillez l'installer depuis https://brew.sh"
-    fi
-
+    
     # Vérifier les dépendances manquantes
-    for package in "${packages[@]}"; do
+    for package in "${all_packages[@]}"; do
         if ! command -v "$package" &> /dev/null; then
             # Exception pour les packages qui ne fournissent pas de commande exécutable
             if [[ "$package" == "python3-pip" || "$package" == "dnsutils" || "$package" == "dialog" || "$package" == "sqlite3" ]]; then
-                case $PLATFORM in
+                case "$PLATFORM" in
                     "macos")
                         if [[ "$package" == "sqlite3" ]] && ! command -v sqlite3 &> /dev/null; then
-            missing_deps+=("$package")
+                            missing_deps+=("$package")
                         fi
                         ;;
                     *)
@@ -428,35 +464,49 @@ install_packages() {
             fi
         fi
     done
-
+    
     # Installer les dépendances manquantes
     if [ ${#missing_deps[@]} -ne 0 ]; then
         echo -e "${YELLOW}Installation des paquets requis: ${missing_deps[*]}...${NC}"
-        case $PLATFORM in
+        case "$PLATFORM" in
             "macos")
                 for package in "${missing_deps[@]}"; do
                     echo -e "${YELLOW}Installation de $package...${NC}"
                     brew install "$package" || display_error "Échec de l'installation de $package"
-                done
-                ;;
-            "raspbian"|"ubuntu")
-                apt-get update
-                for package in "${missing_deps[@]}"; do
-                    echo -e "${YELLOW}Installation de $package...${NC}"
-                    apt-get install -y "$package" || display_error "Échec de l'installation de $package"
+                    echo -e "${GREEN}$package est installé.${NC}"
                 done
                 ;;
             *)
-                # Tentative d'installation avec apt-get (commun à la plupart des distributions Linux)
-                echo -e "${YELLOW}Tentative d'installation avec apt-get...${NC}"
-                apt-get update
-                for package in "${missing_deps[@]}"; do
-                    echo -e "${YELLOW}Installation de $package...${NC}"
-                    apt-get install -y "$package" || echo -e "${RED}Échec de l'installation de $package${NC}"
-                done
+                # Installer avec le gestionnaire de paquets approprié
+                if command -v apt-get &> /dev/null; then
+                    sudo apt-get update
+                    for package in "${missing_deps[@]}"; do
+                        echo -e "${YELLOW}Installation de $package...${NC}"
+                        sudo apt-get install -y "$package" || display_error "Échec de l'installation de $package"
+                        echo -e "${GREEN}$package est installé.${NC}"
+                    done
+                elif command -v yum &> /dev/null; then
+                    for package in "${missing_deps[@]}"; do
+                        echo -e "${YELLOW}Installation de $package...${NC}"
+                        # Conversion du nom du paquet pour yum si nécessaire
+                        local yum_package="$package"
+                        if [[ "$package" == "dnsutils" ]]; then
+                            yum_package="bind-utils"
+                        elif [[ "$package" == "sqlite3" ]]; then
+                            yum_package="sqlite"
+                        fi
+                        sudo yum install -y "$yum_package" || echo -e "${RED}Échec de l'installation de $package${NC}"
+                        echo -e "${GREEN}$package est installé.${NC}"
+                    done
+                else
+                    echo -e "${RED}Aucun gestionnaire de paquets connu trouvé (apt-get ou yum)${NC}"
+                    return 1
+                fi
                 ;;
         esac
-        echo -e "${GREEN}Installation des paquets terminée.${NC}"
+        echo -e "${GREEN}${BOLD}Installation des paquets terminée.${NC}"
+    else
+        echo -e "${GREEN}${BOLD}Toutes les dépendances sont déjà installées !${NC}"
     fi
 }
 
@@ -2196,17 +2246,17 @@ show_menu() {
         # Menu stylisé moderne
         echo -e "${CYAN}${BOLD}╔══════════════════════════ MENU PRINCIPAL ═══════════════════════════╗${NC}"
         echo -e "${CYAN}${BOLD}║                                                                     ║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_INFO} ${WHITE}1.${NC} ${CYAN}Afficher les informations système${NC}                           ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT} ${WHITE}2.${NC} ${LIME}Exécuter tous les benchmarks${NC}                                ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CPU} ${WHITE}3.${NC} ${CYAN}Benchmark CPU${NC}                                                ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT} ${WHITE}4.${NC} ${CYAN}Benchmark Threads${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_RAM} ${WHITE}5.${NC} ${MAGENTA}Benchmark Mémoire${NC}                                           ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_DISK} ${WHITE}6.${NC} ${YELLOW}Benchmark Disque${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_NETWORK} ${WHITE}7.${NC} ${BLUE}Benchmark Réseau${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_TEMP} ${WHITE}8.${NC} ${RED}Stress Test${NC}                                                ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CHART} ${WHITE}9.${NC} ${GREEN}Exporter les résultats (CSV et JSON)${NC}                     ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CLOCK} ${WHITE}10.${NC} ${PURPLE}Planifier les benchmarks${NC}                                 ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CROSS} ${WHITE}11.${NC} ${RED}Quitter${NC}                                                    ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_INFO}${WHITE} 1.${NC} ${CYAN}Afficher les informations système${NC}                           ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT}${WHITE} 2.${NC} ${LIME}Exécuter tous les benchmarks${NC}                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CPU}${WHITE} 3.${NC} ${CYAN}Benchmark CPU${NC}                                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT}${WHITE} 4.${NC} ${CYAN}Benchmark Threads${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_RAM}${WHITE} 5.${NC} ${MAGENTA}Benchmark Mémoire${NC}                                           ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_DISK}${WHITE} 6.${NC} ${YELLOW}Benchmark Disque${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_NETWORK}${WHITE} 7.${NC} ${BLUE}Benchmark Réseau${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_TEMP}${WHITE} 8.${NC} ${RED}Stress Test${NC}                                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CHART}${WHITE} 9.${NC} ${GREEN}Exporter les résultats (CSV et JSON)${NC}                     ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CLOCK}${WHITE} 10.${NC} ${PURPLE}Planifier les benchmarks${NC}                                 ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CROSS}${WHITE} 11.${NC} ${RED}Quitter${NC}                                                    ${CYAN}${BOLD}║${NC}"
         echo -e "${CYAN}${BOLD}║                                                                     ║${NC}"
         echo -e "${CYAN}${BOLD}╚═════════════════════════════════════════════════════════════════════╝${NC}"
         echo ""
@@ -2662,10 +2712,34 @@ get_system_info() {
 
 # Fonction pour obtenir des informations résumées sur le CPU
 get_cpu_info_summary() {
-    local cpu_model=$(grep "model name" /proc/cpuinfo | head -n 1 | cut -d: -f2- | sed 's/^[ \t]*//')
-    local cpu_cores=$(grep -c "processor" /proc/cpuinfo)
-    local cpu_freq=$(grep "cpu MHz" /proc/cpuinfo | head -n 1 | cut -d: -f2- | sed 's/^[ \t]*//' | cut -d. -f1)
+    local cpu_model=""
+    local cpu_cores=""
+    local cpu_freq=""
     local cpu_temp=$(get_cpu_temp)
+    
+    # Utiliser une structure conditionnelle pour différentes plateformes
+    case $PLATFORM in
+        "macos")
+            cpu_model=$(sysctl -n machdep.cpu.brand_string)
+            cpu_cores=$(sysctl -n hw.ncpu)
+            cpu_freq=$(sysctl -n hw.cpufrequency | awk '{printf "%.0f", $1/1000000}')
+            ;;
+        "raspbian")
+            cpu_model=$(cat /proc/cpuinfo | grep "Model" | head -n1 | cut -d: -f2 | sed 's/^[ \t]*//')
+            cpu_cores=$(nproc)
+            if command -v vcgencmd &> /dev/null; then
+                cpu_freq=$(vcgencmd measure_clock arm | awk -F'=' '{printf "%.0f", $2/1000000}')
+            else
+                cpu_freq=$(cat /proc/cpuinfo | grep "cpu MHz" | head -n 1 | cut -d: -f2 | sed 's/^[ \t]*//' | cut -d. -f1)
+            fi
+            ;;
+        *)
+            # Pour les autres systèmes Linux
+            cpu_model=$(grep "model name" /proc/cpuinfo | head -n 1 | cut -d: -f2 | sed 's/^[ \t]*//')
+            cpu_cores=$(grep -c "processor" /proc/cpuinfo)
+            cpu_freq=$(grep "cpu MHz" /proc/cpuinfo | head -n 1 | cut -d: -f2 | sed 's/^[ \t]*//' | cut -d. -f1)
+            ;;
+    esac
     
     # Récupérer plus de données de benchmark
     local cpu_single_ops=$(get_last_benchmark_value "cpu_ops_per_sec")
@@ -2896,9 +2970,6 @@ main() {
     # Installation des dépendances nécessaires 
     install_dependencies
     
-    # Installation des paquets requis
-    install_packages
-    
     # Initialisation de la base de données
     init_db
     
@@ -2936,131 +3007,4 @@ center_text() {
     printf "%${padding_left}s" ""
     echo -e "${color}${text}${NC}"
 }
-
-
-# Fonction pour installer les dépendances nécessaires
-install_dependencies() {
-    echo -e "${YELLOW}${BOLD}Vérification et installation des dépendances...${NC}"
-    
-    # Détection de la plateforme
-    case "$(uname -s)" in
-        Linux*)
-            if command -v apt-get &> /dev/null; then
-                echo -e "${CYAN}Système basé sur Debian/Ubuntu détecté.${NC}"
-                
-                # Vérifier sysbench
-                if ! command -v sysbench &> /dev/null; then
-                    echo -e "${YELLOW}Installation de sysbench...${NC}"
-                    sudo apt-get update
-                    sudo apt-get install -y sysbench
-                else
-                    echo -e "${GREEN}sysbench est déjà installé.${NC}"
-                fi
-                
-                # Vérifier sqlite3
-                if ! command -v sqlite3 &> /dev/null; then
-                    echo -e "${YELLOW}Installation de sqlite3...${NC}"
-                    sudo apt-get install -y sqlite3
-                else
-                    echo -e "${GREEN}sqlite3 est déjà installé.${NC}"
-                fi
-                
-                # Vérifier bc
-                if ! command -v bc &> /dev/null; then
-                    echo -e "${YELLOW}Installation de bc...${NC}"
-                    sudo apt-get install -y bc
-                else
-                    echo -e "${GREEN}bc est déjà installé.${NC}"
-                fi
-                
-                # Vérifier iperf3 pour les tests réseau
-                if ! command -v iperf3 &> /dev/null; then
-                    echo -e "${YELLOW}Installation de iperf3...${NC}"
-                    sudo apt-get install -y iperf3
-                else
-                    echo -e "${GREEN}iperf3 est déjà installé.${NC}"
-                fi
-            elif command -v yum &> /dev/null; then
-                echo -e "${CYAN}Système basé sur Red Hat/CentOS/Fedora détecté.${NC}"
-                
-                # Vérifier sysbench
-                if ! command -v sysbench &> /dev/null; then
-                    echo -e "${YELLOW}Installation de sysbench...${NC}"
-                    sudo yum install -y epel-release
-                    sudo yum install -y sysbench
-                else
-                    echo -e "${GREEN}sysbench est déjà installé.${NC}"
-                fi
-                
-                # Vérifier sqlite3
-                if ! command -v sqlite3 &> /dev/null; then
-                    echo -e "${YELLOW}Installation de sqlite3...${NC}"
-                    sudo yum install -y sqlite
-                else
-                    echo -e "${GREEN}sqlite3 est déjà installé.${NC}"
-                fi
-                
-                # Vérifier bc
-                if ! command -v bc &> /dev/null; then
-                    echo -e "${YELLOW}Installation de bc...${NC}"
-                    sudo yum install -y bc
-                else
-                    echo -e "${GREEN}bc est déjà installé.${NC}"
-                fi
-                
-                # Vérifier iperf3 pour les tests réseau
-                if ! command -v iperf3 &> /dev/null; then
-                    echo -e "${YELLOW}Installation de iperf3...${NC}"
-                    sudo yum install -y iperf3
-                else
-                    echo -e "${GREEN}iperf3 est déjà installé.${NC}"
-                fi
-            fi
-            ;;
-        Darwin*)
-            echo -e "${CYAN}Système macOS détecté.${NC}"
-            
-            # Vérifier si Homebrew est installé
-            if ! command -v brew &> /dev/null; then
-                echo -e "${YELLOW}Installation de Homebrew...${NC}"
-                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-            else
-                echo -e "${GREEN}Homebrew est déjà installé.${NC}"
-            fi
-            
-            # Vérifier sysbench
-            if ! command -v sysbench &> /dev/null; then
-                echo -e "${YELLOW}Installation de sysbench...${NC}"
-                brew install sysbench
-            else
-                echo -e "${GREEN}sysbench est déjà installé.${NC}"
-            fi
-            
-            # Vérifier sqlite3
-            if ! command -v sqlite3 &> /dev/null; then
-                echo -e "${YELLOW}Installation de sqlite3...${NC}"
-                brew install sqlite
-            else
-                echo -e "${GREEN}sqlite3 est déjà installé.${NC}"
-            fi
-            
-            # Vérifier iperf3 pour les tests réseau
-            if ! command -v iperf3 &> /dev/null; then
-                echo -e "${YELLOW}Installation de iperf3...${NC}"
-                brew install iperf3
-            else
-                echo -e "${GREEN}iperf3 est déjà installé.${NC}"
-            fi
-            ;;
-        *)
-            echo -e "${RED}Système d'exploitation non pris en charge.${NC}"
-            return 1
-            ;;
-    esac
-    
-    echo -e "${GREEN}${BOLD}Toutes les dépendances sont installées !${NC}"
-}
-
-# Exécution du script
-main "$@" 
 
