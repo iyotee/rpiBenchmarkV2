@@ -3,6 +3,7 @@ benchmark_results/
 benchmark_results_*.log
 benchmark_charts.html
 rpi_benchmark_backup.sh
+run_benchmark.bat
 # Images
 *.png
 *.jpg
