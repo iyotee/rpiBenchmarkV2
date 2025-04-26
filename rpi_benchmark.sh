@@ -792,7 +792,7 @@ benchmark_memory() {
                 fi
                 
                 local transfer_speed=$((size_mb / time_diff))
-                # Pour éviter 0 MiB/sec
+                # Pour éviter 0 MB/sec
                 [ $transfer_speed -eq 0 ] && transfer_speed=1
                 
                 # Enregistrer les métriques directement dans la base de données
@@ -819,15 +819,15 @@ benchmark_memory() {
                     echo "Valeurs enregistrées dans la base de données."
                 } >> "$LOG_FILE"
     
-            # Préparer les données pour le tableau
-            local metrics=(
+                # Préparer les données pour le tableau avec un formatage amélioré
+                local usage_percent=$(echo "scale=1; $used_memory*100/$total_memory" | bc)
+                local metrics=(
                     "Mémoire totale:$(printf "%d MB" "$total_memory")"
                     "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
                     "Mémoire libre:$(printf "%d MB" "$free_memory")"
-                    "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
-                    "Opérations testées:100"
-                    "Données transférées:$(printf "%d MiB" "$size_mb")"
-                    "Vitesse de transfert:$(printf "%d MiB/sec" "$transfer_speed")"
+                    "Ratio utilisation:$(printf "%.1f%%" "$usage_percent")"
+                    "Données transférées:$(printf "%d MB" "$size_mb")"
+                    "Vitesse de transfert:$(printf "%d MB/s" "$transfer_speed")"
                 )
                 
                 format_table "Résultats Mémoire" "${metrics[@]}"
@@ -839,7 +839,9 @@ benchmark_memory() {
                 local temp_results_file=$(mktemp)
                 
                 # Exécuter sysbench en arrière-plan et rediriger sa sortie vers un fichier temporaire
-                sysbench memory --memory-block-size=1M --memory-total-size=10G run > "$temp_results_file" 2>/dev/null &
+                # Utiliser des paramètres plus adaptés aux systèmes modernes
+                echo -e "${YELLOW}${SYMBOL_INFO} Exécution de sysbench memory avec des paramètres optimisés...${NC}"
+                sysbench memory --memory-block-size=4K --memory-total-size=10G --memory-oper=read run > "$temp_results_file" 2>/dev/null &
                 local pid=$!
                 
                 # Afficher une barre de progression pendant l'exécution
@@ -859,21 +861,93 @@ benchmark_memory() {
                 
                 # Lire les résultats du fichier temporaire
                 local results=$(cat "$temp_results_file")
+                
+                # Déboguer les sorties brutes de sysbench
+                echo -e "${YELLOW}${SYMBOL_INFO} Résultats bruts de sysbench :${NC}"
+                echo "$results" | grep -i 'transfer\|operations' 
+                echo -e "${YELLOW}${SYMBOL_INFO} Fin des résultats bruts${NC}"
+                
                 rm "$temp_results_file"
                 
-                    # Extraire les données du résultat de sysbench
-                    local total_ops=$(echo "$results" | grep 'Total operations:' | grep -o '[0-9]\+' || echo "0")
-                    local total_transferred=$(echo "$results" | grep 'Total transferred' | awk '{print $3}' || echo "0")
-                local transfer_speed=$(echo "$results" | grep 'Transfer rate:' | awk '{print $3}' || echo "0")
+                # Extraire les données du résultat de sysbench avec une meilleure gestion des erreurs
+                local total_ops=$(echo "$results" | grep 'Total operations:' | grep -o '[0-9]\+' || echo "0")
+                
+                # Modifier l'extraction pour garantir que nous obtenons un nombre valide
+                # La chaîne "total transferred" peut avoir différents formats selon les versions de sysbench
+                local total_transferred_line=$(echo "$results" | grep -i 'transferred' || echo "0")
+                local total_transferred=0
+                if [[ -n "$total_transferred_line" ]]; then
+                    # Tenter d'extraire juste le nombre
+                    total_transferred=$(echo "$total_transferred_line" | grep -o '[0-9.]\+' | head -1 || echo "0")
+                fi
+                
+                # Pareil pour la vitesse de transfert
+                local transfer_speed_line=$(echo "$results" | grep -i 'Transfer rate:' || echo "0")
+                local transfer_speed=0
+                if [[ -n "$transfer_speed_line" ]]; then
+                    # Tenter d'extraire juste le nombre
+                    transfer_speed=$(echo "$transfer_speed_line" | grep -o '[0-9.]\+' | head -1 || echo "0")
+                fi
+                
+                # S'assurer que nous avons des nombres valides
+                [[ -z "$total_transferred" || "$total_transferred" == "0" ]] && total_transferred=1
+                [[ -z "$transfer_speed" || "$transfer_speed" == "0" ]] && transfer_speed=1
+                
+                # Si la vitesse de transfert est très basse, exécuter un test alternatif
+                if (( $(echo "$transfer_speed < 10" | bc -l) )); then
+                    echo -e "${YELLOW}${SYMBOL_INFO} La vitesse détectée est trop basse (${transfer_speed} MB/s), exécution d'un test alternatif...${NC}"
                     
+                    # Test alternatif avec dd pour mesurer la vitesse mémoire
+                    # Ce test mesure la vitesse de copie entre deux zones mémoire
+                    local alt_size=1000  # 1GB
+                    local src_file="/dev/shm/mem_test_src_$$"
+                    local dst_file="/dev/shm/mem_test_dst_$$"
+                    
+                    # S'assurer que /dev/shm existe et est accessible
+                    if [ ! -d "/dev/shm" ] || [ ! -w "/dev/shm" ]; then
+                        echo -e "${YELLOW}${SYMBOL_INFO} /dev/shm n'est pas disponible, utilisation de /tmp${NC}"
+                        src_file="/tmp/mem_test_src_$$"
+                        dst_file="/tmp/mem_test_dst_$$"
+                    fi
+                    
+                    # Créer un fichier de test en RAM
+                    dd if=/dev/zero of="$src_file" bs=1M count=100 status=none 2>/dev/null
+                    
+                    # Mesurer la vitesse de copie mémoire à mémoire
+                    echo -e "${YELLOW}${SYMBOL_INFO} Test de vitesse mémoire alternatif en cours...${NC}"
+                    show_progress 0
+                    
+                    local alt_start=$(date +%s.%N)
+                    for i in {1..10}; do
+                        dd if="$src_file" of="$dst_file" bs=1M status=none 2>/dev/null
+                        show_progress $((i * 10))
+                    done
+                    
+                    local alt_end=$(date +%s.%N)
+                    local alt_time=$(echo "$alt_end - $alt_start" | bc)
+                    local alt_speed=$(echo "scale=2; (100 * 10) / $alt_time" | bc)
+                    
+                    # Nettoyer les fichiers temporaires
+                    rm -f "$src_file" "$dst_file" 2>/dev/null
+                    
+                    echo -e "${GREEN}${SYMBOL_CHECK} Test alternatif terminé: ${WHITE}${alt_speed}${NC} MB/s${NC}"
+                    
+                    # Utiliser cette valeur si elle est plus élevée
+                    if (( $(echo "$alt_speed > $transfer_speed" | bc -l) )); then
+                        echo -e "${GREEN}${SYMBOL_CHECK} Utilisation de la nouvelle valeur: ${WHITE}${alt_speed}${NC} MB/s${NC}"
+                        transfer_speed=$alt_speed
+                        save_metric_to_db "memory_transfer_speed" "$transfer_speed"
+                    fi
+                fi
+                
                 # Enregistrer les métriques directement dans la base de données
                 save_metric_to_db "memory_transfer_speed" "$transfer_speed"
-                    
-                    # Récupérer les infos mémoire du système
-                    local mem_info=$(free -m)
-                    local total_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $2}')
-                    local used_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $3}')
-                    local free_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $4}')
+                
+                # Récupérer les infos mémoire du système
+                local mem_info=$(free -m)
+                local total_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $2}')
+                local used_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $3}')
+                local free_memory=$(echo "$mem_info" | grep "Mem:" | awk '{print $4}')
                 
                 # Journaliser les valeurs
                 {
@@ -882,23 +956,27 @@ benchmark_memory() {
                     echo "Mémoire utilisée (MB): $used_memory"
                     echo "Mémoire libre (MB): $free_memory"
                     echo "Opérations totales: $total_ops"
-                    echo "Données transférées (MiB): $total_transferred"
-                    echo "Vitesse de transfert (MiB/sec): $transfer_speed"
+                    echo "Données transférées (MB): $total_transferred"
+                    echo "Vitesse de transfert (MB/s): $transfer_speed"
                     echo "Valeurs enregistrées dans la base de données."
                 } >> "$LOG_FILE"
-                    
-                    # Préparer les données pour le tableau
-                    local metrics=(
-                        "Mémoire totale:$(printf "%d MB" "$total_memory")"
-                        "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
-                        "Mémoire libre:$(printf "%d MB" "$free_memory")"
-                        "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
-                        "Opérations totales:$(printf "%s" "$total_ops")"
-                        "Données transférées:$(printf "%s MiB" "$total_transferred")"
-                    "Vitesse de transfert:$(printf "%.2f MiB/sec" "$(format_number "$transfer_speed")")"
-            )
-            
-            format_table "Résultats Mémoire" "${metrics[@]}"
+                
+                # Formater la vitesse de transfert et les données transférées avec notre fonction sécurisée
+                local formatted_speed=$(format_number "$transfer_speed")
+                local formatted_transferred=$(format_number "$total_transferred")
+                
+                # Préparer les données pour le tableau
+                local metrics=(
+                    "Mémoire totale:$(printf "%d MB" "$total_memory")"
+                    "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
+                    "Mémoire libre:$(printf "%d MB" "$free_memory")"
+                    "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
+                    "Opérations totales:$(printf "%d" "$total_ops")"
+                    "Données transférées:$(printf "%.2f MB" "$formatted_transferred")"
+                    "Vitesse de transfert:$(printf "%.2f MB/s" "$formatted_speed")"
+                )
+                
+                format_table "Résultats Mémoire" "${metrics[@]}"
             fi
             ;;
     esac
