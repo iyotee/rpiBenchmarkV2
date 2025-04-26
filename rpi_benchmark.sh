@@ -419,7 +419,7 @@ install_dependencies() {
     for pkg in "${all_packages[@]}"; do
         if ! command -v "${pkg%%-*}" &> /dev/null; then
             missing+=("$pkg")
-        fi
+                        fi
     done
 
     # Si rien à installer
@@ -865,7 +865,7 @@ benchmark_memory() {
                     local total_ops=$(echo "$results" | grep 'Total operations:' | grep -o '[0-9]\+' || echo "0")
                     local total_transferred=$(echo "$results" | grep 'Total transferred' | awk '{print $3}' || echo "0")
                 local transfer_speed=$(echo "$results" | grep 'Transfer rate:' | awk '{print $3}' || echo "0")
-                
+                    
                 # Enregistrer les métriques directement dans la base de données
                 save_metric_to_db "memory_transfer_speed" "$transfer_speed"
                     
@@ -1222,15 +1222,19 @@ benchmark_network() {
     
     # Formater les résultats pour assurer un alignement parfait
     local ping_formatted=$(printf "%.2f ms" "$(format_number "$ping_value")")
-    local download_formatted=$(printf "%.2f MB/s (%.2f Mbps)" "$(format_number "$download_speed")" "$(format_number "$download_mbps")")
-    local upload_formatted=$(printf "%.2f MB/s (%.2f Mbps)" "$(format_number "$upload_speed")" "$(format_number "$upload_mbps")")
+    local download_formatted=$(printf "%.2f Mbps" "$(format_number "$download_speed")")
+    local download_mb_formatted=$(printf "%.2f MB/s" "$(format_number "$download_speed")")
+    local upload_formatted=$(printf "%.2f Mbps" "$(format_number "$upload_speed")")
+    local upload_mb_formatted=$(printf "%.2f MB/s" "$(format_number "$upload_speed")")
     local jitter_formatted=$(printf "%.2f ms" "$(format_number "$jitter")")
     
     # Préparer les données pour le tableau
     local metrics=(
         "Latence (ping):$ping_formatted"
         "Téléchargement:$download_formatted"
+        "Vitesse DL (MB/s):$download_mb_formatted"
         "Upload:$upload_formatted"
+        "Vitesse UL (MB/s):$upload_mb_formatted"
         "Jitter:$jitter_formatted"
     )
     
@@ -1240,7 +1244,9 @@ benchmark_network() {
     {
         echo "RÉSEAU - MÉTRIQUES CLÉS:"
         echo "Latence moyenne (ms): $ping_value"
+        echo "Débit descendant (MB/s): $download_speed"
         echo "Débit descendant (Mbps): $download_mbps"
+        echo "Débit montant (MB/s): $upload_speed"
         echo "Débit montant (Mbps): $upload_mbps"
         echo "Jitter (ms): $jitter"
     } >> "$LOG_FILE"
@@ -2994,23 +3000,33 @@ get_network_info() {
     if [ -n "$download_speed" ]; then
         # Calculer la vitesse en MB/s en conservant 2 décimales
         local download_mbps=$(echo "scale=2; $download_speed / 8" | bc)
-        # Sauvegarder les deux valeurs séparément dans le log, mais n'afficher que la version formatée
+        # Sauvegarder les deux valeurs séparément dans le log
         {
             echo "RÉSEAU_INFO_MB:$download_mbps"
             echo "RÉSEAU_INFO_MBPS:$download_speed"
         } >> "$LOG_FILE"
-        echo "Débit descendant:${download_mbps} MB/s (${download_speed} Mbps)"
+        
+        # Afficher uniquement la valeur en Mbps pour éviter les problèmes d'affichage
+        echo "Débit descendant:${download_speed} Mbps"
+        
+        # Ajouter la conversion en MB/s comme une entrée séparée
+        echo "Vitesse DL (MB/s):${download_mbps} MB/s"
     fi
     
     if [ -n "$upload_speed" ]; then
         # Calculer la vitesse en MB/s en conservant 2 décimales
         local upload_mbps=$(echo "scale=2; $upload_speed / 8" | bc)
-        # Sauvegarder les deux valeurs séparément dans le log, mais n'afficher que la version formatée
+        # Sauvegarder les deux valeurs séparément dans le log
         {
             echo "RÉSEAU_INFO_UPLOAD_MB:$upload_mbps"
             echo "RÉSEAU_INFO_UPLOAD_MBPS:$upload_speed"
         } >> "$LOG_FILE"
-        echo "Débit montant:${upload_mbps} MB/s (${upload_speed} Mbps)"
+        
+        # Afficher uniquement la valeur en Mbps pour éviter les problèmes d'affichage
+        echo "Débit montant:${upload_speed} Mbps"
+        
+        # Ajouter la conversion en MB/s comme une entrée séparée
+        echo "Vitesse UL (MB/s):${upload_mbps} MB/s"
     fi
     
     if [ -n "$ping" ]; then
@@ -3260,8 +3276,8 @@ process_last_log() {
     if [ -n "$cpu_time" ]; then
         cpu_time=${cpu_time%.*}  # Enlève la partie décimale
         save_metric_to_db "cpu_exec_time" "$cpu_time"
-    fi
-    
+                fi
+                
     local cpu_events=$(grep -A 20 "Résultats CPU" "$latest_log" | grep -i "Événements" | head -1 | grep -o "[0-9.]\+" || echo "")
     if [ -n "$cpu_events" ]; then
         save_metric_to_db "cpu_events" "$cpu_events"
@@ -3271,7 +3287,7 @@ process_last_log() {
     local cpu_multi_ops=$(grep -A 20 "Résultats Threads" "$latest_log" | grep -i "Opérations totales" | head -1 | grep -o "[0-9.]\+" || echo "")
     if [ -n "$cpu_multi_ops" ]; then
         save_metric_to_db "cpu_multi_ops" "$cpu_multi_ops"
-    fi
+                fi
     
     local cpu_multi_latency=$(grep -A 20 "Résultats Threads" "$latest_log" | grep -i "Latence moyenne" | head -1 | grep -o "[0-9.]\+" || echo "")
     if [ -n "$cpu_multi_latency" ]; then
@@ -3293,8 +3309,8 @@ process_last_log() {
     fi
     if [ -n "$disk_write" ]; then
         save_metric_to_db "disk_write" "$disk_write"
-    fi
-    
+                fi
+                
     # Extraire les métriques réseau
     local network_download=""
     # Essayer d'abord de récupérer depuis les informations spécifiques
@@ -3330,7 +3346,7 @@ process_last_log() {
     
     if [ -n "$network_upload" ]; then
         save_metric_to_db "network_upload" "$network_upload"
-    fi
+            fi
     
     local network_ping=$(grep -A 20 "Résultats Réseau" "$latest_log" | grep -i "Latence" | head -1 | grep -o "[0-9.]\+" || echo "")
     if [ -n "$network_ping" ]; then
