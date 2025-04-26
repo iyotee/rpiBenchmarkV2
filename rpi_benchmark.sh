@@ -511,11 +511,22 @@ get_cpu_cores() {
 
 # Fonction pour formater les nombres
 format_number() {
-    local number=$1
-    if [[ $number =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-        printf "%.2f" "$number"
-    else
+    local number="$1"
+    
+    # Remplacer les sauts de ligne par des espaces
+    number=$(echo "$number" | tr '\n' ' ')
+    
+    # Nettoyer l'entrée pour s'assurer qu'elle ne contient qu'un seul nombre
+    # Supprimer tout sauf les chiffres, le point décimal et le signe négatif
+    # puis extraire le premier nombre valide trouvé
+    local cleaned_number=$(echo "$number" | tr -cd '0-9.-' | grep -o '^-\?[0-9]*\.\?[0-9]*' || echo "0")
+    
+    # Si cleaned_number est vide ou n'est pas un nombre valide, renvoyer 0.00
+    if [[ -z "$cleaned_number" ]] || ! [[ "$cleaned_number" =~ ^-?[0-9]*\.?[0-9]*$ ]]; then
         echo "0.00"
+    else
+        # Formater le nombre proprement
+        printf "%.2f" "$cleaned_number"
     fi
 }
 
@@ -877,16 +888,16 @@ benchmark_memory() {
                 local total_transferred_line=$(echo "$results" | grep -i 'transferred' || echo "0")
                 local total_transferred=0
                 if [[ -n "$total_transferred_line" ]]; then
-                    # Tenter d'extraire juste le nombre
-                    total_transferred=$(echo "$total_transferred_line" | grep -o '[0-9.]\+' | head -1 || echo "0")
+                    # Extraire le premier nombre trouvé dans la ligne
+                    total_transferred=$(echo "$total_transferred_line" | grep -o '[0-9]\+\.*[0-9]*' | head -1 || echo "0")
                 fi
                 
                 # Pareil pour la vitesse de transfert
                 local transfer_speed_line=$(echo "$results" | grep -i 'Transfer rate:' || echo "0")
                 local transfer_speed=0
                 if [[ -n "$transfer_speed_line" ]]; then
-                    # Tenter d'extraire juste le nombre
-                    transfer_speed=$(echo "$transfer_speed_line" | grep -o '[0-9.]\+' | head -1 || echo "0")
+                    # Extraire le premier nombre trouvé dans la ligne
+                    transfer_speed=$(echo "$transfer_speed_line" | grep -o '[0-9]\+\.*[0-9]*' | head -1 || echo "0")
                 fi
                 
                 # S'assurer que nous avons des nombres valides
@@ -967,13 +978,13 @@ benchmark_memory() {
                     
                     # Préparer les données pour le tableau
                     local metrics=(
-                        "Mémoire totale:$(printf "%d MB" "$total_memory")"
-                        "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
-                        "Mémoire libre:$(printf "%d MB" "$free_memory")"
-                        "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
-                        "Opérations totales:$(printf "%.0f" "$total_ops")"
-                        "Données transférées:$(printf "%.2f MB" "$formatted_transferred")"
-                        "Vitesse de transfert:$(printf "%.2f MB/s" "$formatted_speed")"
+                        "Mémoire totale:$(printf "%d MB" "${total_memory:-0}")"
+                        "Mémoire utilisée:$(printf "%d MB" "${used_memory:-0}")"
+                        "Mémoire libre:$(printf "%d MB" "${free_memory:-0}")"
+                        "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; ${used_memory:-0}*100/${total_memory:-1}" | bc)")"
+                        "Opérations totales:$(printf "%d" "${total_ops:-0}")"
+                        "Données transférées:$(printf "%.2f MB" "${formatted_transferred:-0}")"
+                        "Vitesse de transfert:$(printf "%.2f MB/s" "${formatted_speed:-0}")"
             )
             
             format_table "Résultats Mémoire" "${metrics[@]}"
@@ -2394,14 +2405,14 @@ show_menu() {
         # Menu stylisé moderne
         echo -e "${CYAN}${BOLD}╔══════════════════════════ MENU PRINCIPAL ═══════════════════════════╗${NC}"
         echo -e "${CYAN}${BOLD}║                                                                     ║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_INFO}${WHITE} 1.${NC} ${CYAN}Afficher les informations système${NC}                           ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_INFO}${WHITE}  1.${NC} ${CYAN}Afficher les informations système${NC}                           ${CYAN}${BOLD}║${NC}"
         echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT}${WHITE} 2.${NC} ${LIME}Exécuter tous les benchmarks${NC}                                ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CPU}${WHITE} 3.${NC} ${CYAN}Benchmark CPU${NC}                                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CPU}${WHITE}  3.${NC} ${CYAN}Benchmark CPU${NC}                                                ${CYAN}${BOLD}║${NC}"
         echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT}${WHITE} 4.${NC} ${CYAN}Benchmark Threads${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_RAM}${WHITE} 5.${NC} ${MAGENTA}Benchmark Mémoire${NC}                                           ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_RAM}${WHITE}  5.${NC} ${MAGENTA}Benchmark Mémoire${NC}                                           ${CYAN}${BOLD}║${NC}"
         echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_DISK}${WHITE} 6.${NC} ${YELLOW}Benchmark Disque${NC}                                            ${CYAN}${BOLD}║${NC}"
         echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_NETWORK}${WHITE} 7.${NC} ${BLUE}Benchmark Réseau${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_TEMP}${WHITE} 8.${NC} ${RED}Stress Test${NC}                                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_TEMP}${WHITE}  8.${NC} ${RED}Stress Test${NC}                                                ${CYAN}${BOLD}║${NC}"
         echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CHART}${WHITE} 9.${NC} ${GREEN}Exporter les résultats (CSV et JSON)${NC}                     ${CYAN}${BOLD}║${NC}"
         echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CLOCK}${WHITE} 10.${NC} ${PURPLE}Planifier les benchmarks${NC}                                 ${CYAN}${BOLD}║${NC}"
         echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CROSS}${WHITE} 11.${NC} ${RED}Quitter${NC}                                                    ${CYAN}${BOLD}║${NC}"
