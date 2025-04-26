@@ -164,11 +164,11 @@ modern_header() {
 show_header() {
     clear
     echo ""
-    echo -e "${BLUE}${BOLD}╔════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}${BOLD}║                                                                ║${NC}"
-    echo -e "${BLUE}${BOLD}║  ${WHITE}${BOLD}  RPi BENCHMARK v2.0 - ANALYSE COMPLÈTE DES PERFORMANCES      ${NC}${BLUE}${BOLD}║${NC}"
-    echo -e "${BLUE}${BOLD}║                                                                ║${NC}"
-    echo -e "${BLUE}${BOLD}╚════════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${BLUE}${BOLD}╔═════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}${BOLD}║                                                                 ║${NC}"
+    echo -e "${BLUE}${BOLD}║  ${WHITE}${BOLD}  RPi BENCHMARK v2.0 - ANALYSE COMPLÈTE DES PERFORMANCES       ${NC}${BLUE}${BOLD}║${NC}"
+    echo -e "${BLUE}${BOLD}║                                                                 ║${NC}"
+    echo -e "${BLUE}${BOLD}╚═════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "  ${YELLOW}${SYMBOL_CLOCK} ${WHITE}Date:${NC} $(date '+%d %B %Y - %H:%M:%S')"
     echo -e "  ${YELLOW}${SYMBOL_INFO} ${WHITE}Journal:${NC} $LOG_FILE"
@@ -199,36 +199,17 @@ log_result() {
     }
 }
 
-strip_colors() {
-    echo -e "$1" | sed -r 's/\x1B\[[0-9;]*[mK]//g'
-}
-
-pad_string() {
-    local string="$1"
-    local width="$2"
-    local stripped=$(strip_colors "$string")
-    local real_length=${#stripped}
-    local padding=$((width - real_length))
-    printf "%s" "$string"
-    for ((i=0; i<padding; i++)); do
-        printf " "
-    done
-}
-
+# Formater les tableaux de façon moderne
 format_table() {
     local title=$1
     shift
     local metrics=("$@")
-
+    
+    # Définir les largeurs fixes
     local name_width=35
     local value_width=40
-    local total_width=$((name_width + value_width + 7)) # 7 car 3 "│" + 4 espaces
-
-    # Bordures modernes
-    local top_left="╭" top_right="╮" bottom_left="╰" bottom_right="╯" horizontal="─"
-    local vertical="│" left_t="├" right_t="┤" cross="┼"
-
-    # Couleurs
+    
+    # Couleurs pour le tableau moderne
     local header_bg=$BG_DARK
     local header_fg=$WHITE
     local row_color=$CYAN
@@ -236,67 +217,81 @@ format_table() {
     local line_color=$GRAY
     local text_color=$WHITE
     local value_color=$LIME
-
-    # Enregistrement dans log
+    
+    # Symboles pour les bordures modernes
+    local top_left="╭"
+    local top_right="╮"
+    local bottom_left="╰"
+    local bottom_right="╯"
+    local horizontal="─"
+    local vertical="│"
+    local left_t="├"
+    local right_t="┤"
+    local cross="┼"
+    local top_t="┬"
+    local bottom_t="┴"
+    
+    # Calculer la largeur totale
+    local total_width=$((name_width + value_width + 3))
+    
+    # Enregistrer les métriques dans le journal, mais pas dans la sortie standard
     {
         echo -e "\n# Données pour $title"
         for metric in "${metrics[@]}"; do
             local name=$(echo "$metric" | cut -d':' -f1)
             local value=$(echo "$metric" | cut -d':' -f2-)
+            # Supprimer les espaces en début et fin de la valeur
             value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
             echo "$name: $value"
         done
     } >> "$LOG_FILE" 2>/dev/null
-
-    # Affichage
+    
+    # Afficher le titre du tableau
     echo ""
     echo -e "${BOLD}${BLUE}${title}${NC}"
-
+    
     # Ligne supérieure
     echo -ne "${line_color}${top_left}"
-    printf "%s" "$(printf "%${total_width}s" | tr ' ' "$horizontal")"
+    printf "%s" $(printf "%${total_width}s" | tr " " "$horizontal")
     echo -e "${top_right}${NC}"
-
-    # En-tête
-    echo -ne "${line_color}${vertical}${NC} "
-    pad_string "${header_bg}${header_fg}${BOLD}MÉTRIQUE${NC}" $name_width
-    echo -ne " ${line_color}${vertical}${NC} "
-    pad_string "${header_bg}${header_fg}${BOLD}VALEUR${NC}" $value_width
-    echo -e " ${line_color}${vertical}${NC}"
-
+    
+    # Ligne d'en-tête
+    echo -ne "${line_color}${vertical}${NC}${header_bg}${header_fg}${BOLD}"
+    printf " %-${name_width}s │ %-${value_width}s " "MÉTRIQUE" "VALEUR"
+    echo -e "${NC}${line_color}${vertical}${NC}"
+    
     # Ligne de séparation
     echo -ne "${line_color}${left_t}"
-    printf "%s" "$(printf "%${name_width}s" | tr ' ' "$horizontal")"
+    printf "%s" $(printf "%${name_width}s" | tr " " "$horizontal")
     echo -ne "${cross}"
-    printf "%s" "$(printf "%${value_width}s" | tr ' ' "$horizontal")"
+    printf "%s" $(printf "%${value_width}s" | tr " " "$horizontal")
     echo -e "${right_t}${NC}"
-
-    # Lignes de contenu
+    
+    # Corps du tableau avec alternance de couleurs
     local i=0
     for metric in "${metrics[@]}"; do
         local name=$(echo "$metric" | cut -d':' -f1)
         local value=$(echo "$metric" | cut -d':' -f2-)
+        # Supprimer les espaces en début et fin de la valeur
         value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-
-        local name_colored="${text_color}${name}${NC}"
-        local value_colored="${value_color}${value}${NC}"
-
-        echo -ne "${line_color}${vertical}${NC} "
-        pad_string "$name_colored" $name_width
-        echo -ne " ${line_color}${vertical}${NC} "
-        pad_string "$value_colored" $value_width
-        echo -e " ${line_color}${vertical}${NC}"
-
+        
+        if [ $((i % 2)) -eq 0 ]; then
+            background_color=""
+        else
+            background_color=""
+        fi
+        
+        echo -ne "${line_color}${vertical}${NC}${background_color}"
+        printf " ${text_color}%-${name_width}s${NC}${background_color} ${line_color}${vertical}${NC}${background_color} ${value_color}%-${value_width}s ${NC}${line_color}${vertical}${NC}\n" "$name" "$value"
+        
         i=$((i + 1))
     done
-
+    
     # Ligne inférieure
     echo -ne "${line_color}${bottom_left}"
-    printf "%s" "$(printf "%${total_width}s" | tr ' ' "$horizontal")"
+    printf "%s" $(printf "%${total_width}s" | tr " " "$horizontal")
     echo -e "${bottom_right}${NC}"
 }
-
-
 
 # Fonction pour obtenir la température CPU avec style moderne
 get_cpu_temp() {
@@ -2201,17 +2196,17 @@ show_menu() {
         # Menu stylisé moderne
         echo -e "${CYAN}${BOLD}╔══════════════════════════ MENU PRINCIPAL ═══════════════════════════╗${NC}"
         echo -e "${CYAN}${BOLD}║                                                                     ║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_INFO}${WHITE}  1.${NC} ${CYAN}Afficher les informations système${NC}                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT}${WHITE} 2.${NC} ${LIME}Exécuter tous les benchmarks${NC}                                 ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CPU}${WHITE}  3.${NC} ${CYAN}Benchmark CPU${NC}                                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_INFO}${WHITE} 1.${NC} ${CYAN}Afficher les informations système${NC}                           ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT}${WHITE} 2.${NC} ${LIME}Exécuter tous les benchmarks${NC}                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CPU}${WHITE} 3.${NC} ${CYAN}Benchmark CPU${NC}                                                ${CYAN}${BOLD}║${NC}"
         echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_BOLT}${WHITE} 4.${NC} ${CYAN}Benchmark Threads${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_RAM}${WHITE}  5.${NC} ${MAGENTA}Benchmark Mémoire${NC}                                            ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_DISK}${WHITE} 6.${NC} ${YELLOW}Benchmark Disque${NC}                                             ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_NETWORK}${WHITE} 7.${NC} ${BLUE}Benchmark Réseau${NC}                                             ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_TEMP}${WHITE}  8.${NC} ${RED}Stress Test${NC}                                                  ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CHART}${WHITE} 9.${NC} ${GREEN}Exporter les résultats (CSV et JSON)${NC}                         ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CLOCK}${WHITE} 10.${NC} ${PURPLE}Planifier les benchmarks${NC}                                     ${CYAN}${BOLD}║${NC}"
-        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CROSS}${WHITE} 11.${NC} ${RED}Quitter${NC}                                                      ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_RAM}${WHITE} 5.${NC} ${MAGENTA}Benchmark Mémoire${NC}                                           ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_DISK}${WHITE} 6.${NC} ${YELLOW}Benchmark Disque${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_NETWORK}${WHITE} 7.${NC} ${BLUE}Benchmark Réseau${NC}                                            ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_TEMP}${WHITE} 8.${NC} ${RED}Stress Test${NC}                                                ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CHART}${WHITE} 9.${NC} ${GREEN}Exporter les résultats (CSV et JSON)${NC}                     ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CLOCK}${WHITE} 10.${NC} ${PURPLE}Planifier les benchmarks${NC}                                 ${CYAN}${BOLD}║${NC}"
+        echo -e "${CYAN}${BOLD}║${NC}  ${SYMBOL_CROSS}${WHITE} 11.${NC} ${RED}Quitter${NC}                                                    ${CYAN}${BOLD}║${NC}"
         echo -e "${CYAN}${BOLD}║                                                                     ║${NC}"
         echo -e "${CYAN}${BOLD}╚═════════════════════════════════════════════════════════════════════╝${NC}"
         echo ""
