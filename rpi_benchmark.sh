@@ -305,14 +305,14 @@ get_cpu_temp() {
             ;;
         "raspbian")
             if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
-                awk '{printf "%.1f°C", $1/1000}' /sys/class/thermal/thermal_zone0/temp
+                awk '{printf "%.1f", $1/1000}' /sys/class/thermal/thermal_zone0/temp
             else
                 echo "N/A"
             fi
             ;;
         *)
             if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
-                awk '{printf "%.1f°C", $1/1000}' /sys/class/thermal/thermal_zone0/temp
+                awk '{printf "%.1f", $1/1000}' /sys/class/thermal/thermal_zone0/temp
             else
                 echo "N/A"
             fi
@@ -892,7 +892,7 @@ benchmark_memory() {
                 # S'assurer que nous avons des nombres valides
                 [[ -z "$total_transferred" || "$total_transferred" == "0" ]] && total_transferred=1
                 [[ -z "$transfer_speed" || "$transfer_speed" == "0" ]] && transfer_speed=1
-                
+                    
                 # Si la vitesse de transfert est très basse, exécuter un test alternatif
                 if (( $(echo "$transfer_speed < 10" | bc -l) )); then
                     echo -e "${YELLOW}${SYMBOL_INFO} La vitesse détectée est trop basse (${transfer_speed} MB/s), exécution d'un test alternatif...${NC}"
@@ -971,9 +971,9 @@ benchmark_memory() {
                         "Mémoire utilisée:$(printf "%d MB" "$used_memory")"
                         "Mémoire libre:$(printf "%d MB" "$free_memory")"
                         "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; $used_memory*100/$total_memory" | bc)")"
-                    "Opérations totales:$(printf "%d" "$total_ops")"
-                    "Données transférées:$(printf "%.2f MB" "$formatted_transferred")"
-                    "Vitesse de transfert:$(printf "%.2f MB/s" "$formatted_speed")"
+                        "Opérations totales:$(printf "%.0f" "$total_ops")"
+                        "Données transférées:$(printf "%.2f MB" "$formatted_transferred")"
+                        "Vitesse de transfert:$(printf "%.2f MB/s" "$formatted_speed")"
             )
             
             format_table "Résultats Mémoire" "${metrics[@]}"

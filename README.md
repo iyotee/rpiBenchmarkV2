@@ -65,22 +65,6 @@ chmod +x rpi_benchmark.sh
 ./rpi_benchmark.sh --dialog
 ```
 
-### Exécution sous Windows avec WSL
-
-Si vous utilisez Windows, vous pouvez exécuter le script via WSL (Windows Subsystem for Linux) :
-
-1. Assurez-vous que WSL est installé avec Ubuntu
-2. Utilisez le fichier batch fourni `run_benchmark.bat` pour lancer le script
-3. Vous pouvez également tester speedtest-cli directement avec `test_speedtest.bat`
-
-```batch
-# Pour exécuter le benchmark complet
-run_benchmark.bat
-
-# Pour tester uniquement speedtest-cli
-test_speedtest.bat
-```
-
 ### Interface CLI
 
 Le script propose un menu interactif en ligne de commande avec les options suivantes :
