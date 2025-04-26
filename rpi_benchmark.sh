@@ -377,137 +377,87 @@ get_hardware_info() {
     echo -e "    ${RED}⬥${NC} ${WHITE}CPU:${NC} $(get_cpu_temp)"
 }
 
-# Fonction pour installer les paquets requis
+# install_dependencies: Vérifie et installe en une seule passe les dépendances requises
 install_dependencies() {
-    echo -e "${YELLOW}${BOLD}Vérification et installation des dépendances...${NC}"
-    
-    # Définir les paquets communs et spécifiques à la plateforme
-    local common_packages=("sysbench" "bc" "sqlite3" "python3")
+    echo -e "${YELLOW}${BOLD}Vérification et installation optimisée des dépendances...${NC}"
+
+    # Paquets communs et spécifiques à la plateforme
+    local common_packages=(sysbench bc sqlite3 python3)
     local platform_packages=()
-    
+
     # Détection de la plateforme
-    case "$PLATFORM" in
-        "macos")
-            echo -e "${CYAN}Système macOS détecté.${NC}"
-            platform_packages=("stress-ng" "speedtest-cli")
-            
-            # Vérifier si osx-cpu-temp est nécessaire pour la température sous macOS
-            if ! command -v osx-cpu-temp &> /dev/null; then
-                platform_packages+=("osx-cpu-temp")
-            fi
-            
-            # Vérifier si Homebrew est installé
-            if ! command -v brew &> /dev/null; then
-                echo -e "${YELLOW}Installation de Homebrew...${NC}"
-                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-            else
-                echo -e "${GREEN}Homebrew est déjà installé.${NC}"
-            fi
-            
-            # Vérifier iperf3 pour les tests réseau
-            if ! command -v iperf3 &> /dev/null; then
-                platform_packages+=("iperf3")
-            fi
-            ;;
-        "raspbian"|"ubuntu")
-            echo -e "${CYAN}Système basé sur Debian/Ubuntu détecté.${NC}"
-            platform_packages=("stress-ng" "speedtest-cli" "dnsutils" "hdparm" "python3-pip" "dialog")
-            
-            # Vérifier iperf3 pour les tests réseau
-            if ! command -v iperf3 &> /dev/null; then
-                platform_packages+=("iperf3")
-            fi
-            ;;
+    case "${PLATFORM}" in
+        macos)
+            echo -e "${CYAN}macOS détecté${NC}"
+            platform_packages=(stress-ng speedtest-cli osx-cpu-temp iperf3)
+            ;;  
+        raspbian|ubuntu)
+            echo -e "${CYAN}Debian/Ubuntu détecté${NC}"
+            platform_packages=(stress-ng speedtest-cli dnsutils hdparm python3-pip dialog iperf3)
+            ;;  
         *)
-            # Si la plateforme est inconnue, tentons d'identifier par le gestionnaire de paquets
             if command -v apt-get &> /dev/null; then
-                echo -e "${CYAN}Système basé sur Debian/Ubuntu détecté.${NC}"
-                platform_packages=("stress-ng" "speedtest-cli" "dnsutils" "hdparm" "python3-pip" "dialog" "iperf3")
+                echo -e "${CYAN}Debian/Ubuntu détecté via apt-get${NC}"
+                platform_packages=(stress-ng speedtest-cli dnsutils hdparm python3-pip dialog iperf3)
             elif command -v yum &> /dev/null; then
-                echo -e "${CYAN}Système basé sur Red Hat/CentOS/Fedora détecté.${NC}"
-                platform_packages=("stress-ng" "dnsutils" "hdparm" "python3-pip" "dialog" "iperf3")
-                
-                # Sur les systèmes RHEL, sysbench peut nécessiter epel-release
+                echo -e "${CYAN}RHEL/CentOS détecté via yum${NC}"
+                platform_packages=(stress-ng dnsutils hdparm python3-pip dialog iperf3)
+                # Ajouter epel-release si sysbench absent
                 if ! command -v sysbench &> /dev/null; then
-                    echo -e "${YELLOW}Installation de epel-release pour sysbench...${NC}"
-                    sudo yum install -y epel-release
+                    platform_packages+=(epel-release)
                 fi
             else
-                echo -e "${YELLOW}Plateforme non reconnue. Tentative d'installation des paquets Linux par défaut...${NC}"
-                platform_packages=("stress-ng" "speedtest-cli" "dnsutils" "hdparm" "python3-pip" "dialog" "iperf3")
+                echo -e "${YELLOW}Plateforme inconnue, utilisation des paquets Linux génériques${NC}"
+                platform_packages=(stress-ng speedtest-cli dnsutils hdparm python3-pip dialog iperf3)
             fi
-            ;;
+            ;;  
     esac
-    
-    # Combiner les paquets communs et spécifiques à la plateforme
+
+    # Combinaison des listes et recherche des paquets manquants
     local all_packages=("${common_packages[@]}" "${platform_packages[@]}")
-    local missing_deps=()
-    
-    # Vérifier les dépendances manquantes
-    for package in "${all_packages[@]}"; do
-        if ! command -v "$package" &> /dev/null; then
-            # Exception pour les packages qui ne fournissent pas de commande exécutable
-            if [[ "$package" == "python3-pip" || "$package" == "dnsutils" || "$package" == "dialog" || "$package" == "sqlite3" ]]; then
-                case "$PLATFORM" in
-                    "macos")
-                        if [[ "$package" == "sqlite3" ]] && ! command -v sqlite3 &> /dev/null; then
-                            missing_deps+=("$package")
-                        fi
-                        ;;
-                    *)
-                        # Pour Linux, nous ajoutons simplement ces packages
-                        missing_deps+=("$package")
-                        ;;
-                esac
-            else
-                missing_deps+=("$package")
-            fi
+    local missing=()
+    for pkg in "${all_packages[@]}"; do
+        if ! command -v "${pkg%%-*}" &> /dev/null; then
+            missing+=("$pkg")
         fi
     done
-    
-    # Installer les dépendances manquantes
-    if [ ${#missing_deps[@]} -ne 0 ]; then
-        echo -e "${YELLOW}Installation des paquets requis: ${missing_deps[*]}...${NC}"
-        case "$PLATFORM" in
-            "macos")
-                for package in "${missing_deps[@]}"; do
-                    echo -e "${YELLOW}Installation de $package...${NC}"
-                    brew install "$package" || display_error "Échec de l'installation de $package"
-                    echo -e "${GREEN}$package est installé.${NC}"
-                done
-                ;;
-            *)
-                # Installer avec le gestionnaire de paquets approprié
-                if command -v apt-get &> /dev/null; then
-                    sudo apt-get update
-                    for package in "${missing_deps[@]}"; do
-                        echo -e "${YELLOW}Installation de $package...${NC}"
-                        sudo apt-get install -y "$package" || display_error "Échec de l'installation de $package"
-                        echo -e "${GREEN}$package est installé.${NC}"
-                    done
-                elif command -v yum &> /dev/null; then
-                    for package in "${missing_deps[@]}"; do
-                        echo -e "${YELLOW}Installation de $package...${NC}"
-                        # Conversion du nom du paquet pour yum si nécessaire
-                        local yum_package="$package"
-                        if [[ "$package" == "dnsutils" ]]; then
-                            yum_package="bind-utils"
-                        elif [[ "$package" == "sqlite3" ]]; then
-                            yum_package="sqlite"
-                        fi
-                        sudo yum install -y "$yum_package" || echo -e "${RED}Échec de l'installation de $package${NC}"
-                        echo -e "${GREEN}$package est installé.${NC}"
-                    done
-                else
-                    echo -e "${RED}Aucun gestionnaire de paquets connu trouvé (apt-get ou yum)${NC}"
-                    return 1
-                fi
-                ;;
-        esac
-        echo -e "${GREEN}${BOLD}Installation des paquets terminée.${NC}"
-    else
+
+    # Si rien à installer
+    if [ ${#missing[@]} -eq 0 ]; then
         echo -e "${GREEN}${BOLD}Toutes les dépendances sont déjà installées !${NC}"
+        return 0
     fi
+
+    echo -e "${YELLOW}Paquets manquants: ${missing[*]}${NC}"
+
+    # Préparation des noms pour yum si nécessaire
+    local to_install=("")
+    if command -v yum &> /dev/null; then
+        for pkg in "${missing[@]}"; do
+            case "$pkg" in
+                dnsutils) to_install+=(bind-utils) ;;
+                sqlite3)  to_install+=(sqlite)     ;;
+                python3-pip) to_install+=(python3-pip) ;;
+                *) to_install+=("$pkg") ;;
+            esac
+        done
+    else
+        to_install=("${missing[@]}")
+    fi
+
+    # Installation groupée
+    if command -v brew &> /dev/null && [ "${PLATFORM}" = "macos" ]; then
+        brew update && brew install ${to_install[*]}
+    elif command -v apt-get &> /dev/null; then
+        sudo apt-get update && sudo apt-get install -y ${to_install[*]}
+    elif command -v yum &> /dev/null; then
+        sudo yum install -y ${to_install[*]}
+    else
+        echo -e "${RED}Aucun gestionnaire de paquets pris en charge détecté${NC}"
+        return 1
+    fi
+
+    echo -e "${GREEN}${BOLD}Installation terminée avec succès !${NC}"
 }
 
 # Fonction pour obtenir les informations réseau
