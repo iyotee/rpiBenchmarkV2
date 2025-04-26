@@ -238,11 +238,14 @@ format_table() {
     {
         echo -e "\n# Données pour $title"
         for metric in "${metrics[@]}"; do
+            # Sécurité pour s'assurer que nous avons une chaîne de caractères valide
+            if [[ -n "$metric" ]]; then
             local name=$(echo "$metric" | cut -d':' -f1)
             local value=$(echo "$metric" | cut -d':' -f2-)
             # Supprimer les espaces en début et fin de la valeur
             value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
             echo "$name: $value"
+            fi
         done
     } >> "$LOG_FILE" 2>/dev/null
     
@@ -270,10 +273,14 @@ format_table() {
     # Corps du tableau avec alternance de couleurs
     local i=0
     for metric in "${metrics[@]}"; do
-        local name=$(echo "$metric" | cut -d':' -f1)
-        local value=$(echo "$metric" | cut -d':' -f2-)
-        # Supprimer les espaces en début et fin de la valeur
-        value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        # Vérifier si la métrique est valide avant de l'afficher
+        if [[ -n "$metric" ]]; then
+            # Extraire le nom et la valeur de manière sécurisée
+            local name=$(echo "$metric" | cut -d':' -f1 || echo "N/A")
+            local raw_value=$(echo "$metric" | cut -d':' -f2- || echo "N/A")
+            
+            # Nettoyer la valeur - supprimer les sauts de ligne et caractères non imprimables
+            local value=$(echo "$raw_value" | tr -d '\n' | tr -cd '[:print:]' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
         
         if [ $((i % 2)) -eq 0 ]; then
             background_color=""
@@ -281,10 +288,17 @@ format_table() {
             background_color=""
         fi
         
+            # Tronquer les valeurs trop longues pour éviter les problèmes d'affichage
+            if [ ${#value} -gt $value_width ]; then
+                value="${value:0:$((value_width-3))}..."
+            fi
+            
+            # Utiliser printf avec un format qui évite les erreurs pour les valeurs non numériques
         echo -ne "${line_color}${vertical}${NC}${background_color}"
         printf " ${text_color}%-${name_width}s${NC}${background_color} ${line_color}${vertical}${NC}${background_color} ${value_color}%-${value_width}s ${NC}${line_color}${vertical}${NC}\n" "$name" "$value"
         
         i=$((i + 1))
+        fi
     done
     
     # Ligne inférieure
@@ -975,19 +989,36 @@ benchmark_memory() {
                 # Formater la vitesse de transfert et les données transférées avec notre fonction sécurisée
                 local formatted_speed=$(format_number "$transfer_speed")
                 local formatted_transferred=$(format_number "$total_transferred")
-                    
-                    # Préparer les données pour le tableau
-                    local metrics=(
-                        "Mémoire totale:$(printf "%d MB" "${total_memory:-0}")"
-                        "Mémoire utilisée:$(printf "%d MB" "${used_memory:-0}")"
-                        "Mémoire libre:$(printf "%d MB" "${free_memory:-0}")"
-                        "Ratio utilisation:$(printf "%.1f%%" "$(echo "scale=1; ${used_memory:-0}*100/${total_memory:-1}" | bc)")"
-                        "Opérations totales:$(printf "%d" "${total_ops:-0}")"
-                        "Données transférées:$(printf "%.2f MB" "${formatted_transferred:-0}")"
-                        "Vitesse de transfert:$(printf "%.2f MB/s" "${formatted_speed:-0}")"
-            )
-            
-            format_table "Résultats Mémoire" "${metrics[@]}"
+                
+                # Pré-formater toutes les valeurs en dehors du tableau pour éviter les erreurs
+                local total_memory_fmt="$(printf "%d MB" "${total_memory:-0}" 2>/dev/null || echo "N/A MB")"
+                local used_memory_fmt="$(printf "%d MB" "${used_memory:-0}" 2>/dev/null || echo "N/A MB")"
+                local free_memory_fmt="$(printf "%d MB" "${free_memory:-0}" 2>/dev/null || echo "N/A MB")"
+                local ops_fmt="$(printf "%d" "${total_ops:-0}" 2>/dev/null || echo "N/A")"
+                
+                # Calculer le ratio d'utilisation de manière sécurisée
+                local usage_percent="N/A%"
+                if [[ -n "${total_memory:-}" && "${total_memory:-0}" -gt 0 ]]; then
+                    local percent=$(echo "scale=1; ${used_memory:-0}*100/${total_memory:-1}" | bc 2>/dev/null)
+                    usage_percent="$(printf "%.1f%%" "${percent:-0}" 2>/dev/null || echo "N/A%")"
+                fi
+                
+                # Formater les valeurs de données et vitesse
+                local data_fmt="$(printf "%.2f MB" "${formatted_transferred:-0}" 2>/dev/null || echo "N/A MB")"
+                local speed_fmt="$(printf "%.2f MB/s" "${formatted_speed:-0}" 2>/dev/null || echo "N/A MB/s")"
+                
+                # Créer le tableau avec des valeurs déjà formatées
+                local metrics=(
+                    "Mémoire totale:${total_memory_fmt}"
+                    "Mémoire utilisée:${used_memory_fmt}"
+                    "Mémoire libre:${free_memory_fmt}"
+                    "Ratio utilisation:${usage_percent}"
+                    "Opérations totales:${ops_fmt}"
+                    "Données transférées:${data_fmt}"
+                    "Vitesse de transfert:${speed_fmt}"
+                )
+                
+                format_table "Résultats Mémoire" "${metrics[@]}"
             fi
             ;;
     esac
