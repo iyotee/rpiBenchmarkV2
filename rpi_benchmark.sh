@@ -2850,13 +2850,17 @@ get_last_benchmark_value() {
     local db_file="$RESULTS_DIR/benchmark_results.db"
     
     if [ ! -f "$db_file" ]; then
+        echo "N/A"
         return
     fi
     
     local result=$(sqlite3 "$db_file" "SELECT value FROM benchmark_results WHERE metric='$metric_name' ORDER BY timestamp DESC LIMIT 1" 2>/dev/null)
     
-    if [ -n "$result" ]; then
+    if [ -n "$result" ] && [ "$result" != "20250426.0" ]; then
         echo "$result"
+    else
+        # Si aucun résultat ou valeur aberrante, renvoyer N/A
+        echo "N/A"
     fi
 }
 
