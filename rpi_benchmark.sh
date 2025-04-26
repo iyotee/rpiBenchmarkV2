@@ -3008,3 +3008,6 @@ center_text() {
     echo -e "${color}${text}${NC}"
 }
 
+# Exécution du script
+main "$@"
+
