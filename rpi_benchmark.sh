@@ -988,14 +988,26 @@ benchmark_disk() {
     local read_speed_formatted=$(printf "%.2f MB/s" "$(format_number "$read_speed")")
     local test_size_formatted=$(printf "%d MB" "$test_size")
     
+    # Enregistrer les métriques directement dans la base de données
+    save_metric_to_db "disk_write" "$write_speed"
+    save_metric_to_db "disk_read" "$read_speed"
+    
+    # Journaliser les valeurs pour le débogage
+    {
+        echo "DISQUE - MÉTRIQUES BRUTES:"
+        echo "Vitesse d'écriture (MB/s): $write_speed"
+        echo "Vitesse de lecture (MB/s): $read_speed"
+        echo "Valeurs enregistrées dans la base de données."
+    } >> "$LOG_FILE"
+    
     # Préparer les données pour le tableau
-            local metrics=(
+    local metrics=(
         "Taille du test:$test_size_formatted"
         "Vitesse d'écriture:$write_speed_formatted"
         "Vitesse de lecture:$read_speed_formatted"
-            )
-            
-            format_table "Résultats Disque" "${metrics[@]}"
+    )
+    
+    format_table "Résultats Disque" "${metrics[@]}"
 }
 
 # Fonction pour le benchmark réseau
@@ -1070,7 +1082,7 @@ benchmark_network() {
         local dl_speeds=()
         local dl_servers=(
             "https://speed.cloudflare.com/__down?bytes=10000000"
-            "https://speedtest.net/mini/speedtest/random1000x1000.jpg"
+            "https://speedtest.net/mini/speedtest/random100x100.jpg"
             "https://proof.ovh.net/files/10Mb.dat"
         )
         
